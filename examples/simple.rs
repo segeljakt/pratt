@@ -44,6 +44,7 @@ where
     type Input = TokenTree;
     type Output = Expr;
 
+    // Query information about an operator (Affix, Precedence, Associativity)
     fn query(&mut self, tree: &TokenTree) -> Option<Affix> {
         let affix = match tree {
             TokenTree::Postfix('?') => Affix::Postfix(Precedence(1)),
@@ -58,6 +59,7 @@ where
         Some(affix)
     }
 
+    // Construct a primary expression, e.g. a number
     fn primary(&mut self, tree: TokenTree) -> Result<Expr, ()> {
         match tree {
             TokenTree::Primary(num) => Ok(Expr::Int(num)),
@@ -66,6 +68,7 @@ where
         }
     }
 
+    // Construct an binary infix expression, e.g. 1+1
     fn infix(&mut self, lhs: Expr, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
         let op = match tree {
             TokenTree::Infix('+') => BinOp::Add,
@@ -77,6 +80,7 @@ where
         Ok(Expr::BinOp(Box::new(lhs), op, Box::new(rhs)))
     }
 
+    // Construct an unary prefix expression, e.g. !1
     fn prefix(&mut self, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
         let op = match tree {
             TokenTree::Prefix('!') => UnOp::Not,
@@ -86,6 +90,7 @@ where
         Ok(Expr::UnOp(op, Box::new(rhs)))
     }
 
+    // Construct an unary postfix expression, e.g. 1?
     fn postfix(&mut self, lhs: Expr, tree: TokenTree) -> Result<Expr, ()> {
         let op = match tree {
             TokenTree::Postfix('?') => UnOp::Try,
@@ -99,6 +104,9 @@ fn main() {
     let tt = grammar::TokenTreeParser::new()
         .parse("-1?+1*!-1?")
         .unwrap();
-    let expr = ExprParser.parse(tt.into_iter()).unwrap();
+    let expr = ExprParser
+        .parse(tt.into_iter())
+        .unwrap();
     println!("{:#?}", expr);
 }
+

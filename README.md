@@ -1,6 +1,6 @@
-<h1 align="center">`pratt` - A General Purpose Pratt parser</h1>
+<h1 align="center">pratt - A General Purpose Pratt Parser for Rust</h1>
 
-This crate provides offers a high-level interface for implementing Pratt parsers.
+This crate provides offers a high-level interface for implementing Pratt parsers in Rust.
 
 > In computer science, a Pratt parser is an improved recursive descent parser that associates semantics with tokens instead of grammar rules.
 - https://en.wikipedia.org/wiki/Pratt_parser
@@ -9,7 +9,9 @@ In other words, you can use a Pratt parser to parse trees of expressions that mi
 
 ## Example
 
-Assume we want to parse a token-tree into an expression using a Pratt parser.
+Assume we have a strange language which should parse strings such as `-1?+1*!-1?` into `(((((-(1))?)+(1))*(!(-(1))))?)`.
+
+Our strategy is to implement a parser which translates source code into token trees, and then token-trees into expression trees:
 
 ```rust
 // From this
@@ -33,22 +35,21 @@ pub enum Expr {
 
 #[derive(Debug)]
 pub enum BinOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
+    Add, // +
+    Sub, // -
+    Mul, // *
+    Div, // /
 }
 
 #[derive(Debug)]
 pub enum UnOp {
-    Not,
-    Neg,
-    Try,
+    Not, // !
+    Neg, // -
+    Try, // ?
 }
 ```
 
-We first use LALRPOP to implement a parser which takes a source code string and outputs a token-tree.
-
+We implement the parser from source code into token-trees with [LALRPOP](https://github.com/lalrpop/lalrpop).
 
 <details><summary>LALRPOP Grammar</summary>
 <p>
@@ -57,18 +58,6 @@ We first use LALRPOP to implement a parser which takes a source code string and 
 use crate::TokenTree;
 
 grammar<'i>;
-
-match {
-  "(",
-  ")",
-  "+",
-  "-",
-  "*",
-  "/",
-  "!",
-  "?",
-  r"[0-9]+" => Num
-}
 
 pub TokenTree = Group;
 
@@ -88,7 +77,7 @@ Group: Vec<TokenTree> = <prefix:Prefix*> <primary:Primary> <mut postfix:Postfix*
 
 Primary: TokenTree = {
     "(" <Group> ")" => TokenTree::Group(<>),
-    Num             => TokenTree::Primary(<>.parse::<i32>().unwrap()),
+    r"[0-9]+"       => TokenTree::Primary(<>.parse::<i32>().unwrap()),
 }
 
 Infix: TokenTree = {
@@ -111,7 +100,7 @@ Postfix: TokenTree = {
 </p>
 </details>
 
-Then, for the Pratt parser, we define a struct `ExprParser` and implement `pratt::ExprParser` for it.
+Then, for the Pratt parser, we define a `struct ExprParser` and implement `pratt::ExprParser` for it.
 
 ```rust
 use pratt::{Associativity, Affix, ExprParser, Precedence};
@@ -126,11 +115,8 @@ where
     type Input = TokenTree;
     type Output = Expr;
 
+    // Query information about an operator (Affix, Precedence, Associativity)
     fn query(&mut self, tree: &TokenTree) -> Option<Affix> {
-```
-<details><summary>&lt; Implementation &rt;</summary>
-<p>
-```rust
         let affix = match tree {
             TokenTree::Postfix('?') => Affix::Postfix(Precedence(1)),
             TokenTree::Infix('+') => Affix::Infix(Precedence(2), Associativity::Left),
@@ -142,33 +128,19 @@ where
             _ => None?,
         };
         Some(affix)
-```
-</p>
-</details>
-```rust
     }
 
+    // Construct a primary expression, e.g. a number
     fn primary(&mut self, tree: TokenTree) -> Result<Expr, ()> {
-```
-<details><summary>&lt; Implementation &rt;</summary>
-<p>
-```rust
         match tree {
             TokenTree::Primary(num) => Ok(Expr::Int(num)),
-            TokenTree::Group(group) => ExprParser::parse(group.into_iter()),
+            TokenTree::Group(group) => self.parse(group.into_iter()),
             _ => Err(()),
         }
-```
-</p>
-</details>
-```rust
     }
 
+    // Construct an binary infix expression, e.g. 1+1
     fn infix(&mut self, lhs: Expr, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
-```
-<details><summary>&lt; Implementation &rt;</summary>
-<p>
-```rust
         let op = match tree {
             TokenTree::Infix('+') => BinOp::Add,
             TokenTree::Infix('-') => BinOp::Sub,
@@ -177,48 +149,30 @@ where
             _ => Err(())?,
         };
         Ok(Expr::BinOp(Box::new(lhs), op, Box::new(rhs)))
-```
-</p>
-</details>
-```rust
     }
 
+    // Construct an unary prefix expression, e.g. !1
     fn prefix(&mut self, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
-```
-<details><summary>&lt; Implementation &rt;</summary>
-<p>
-```rust
         let op = match tree {
             TokenTree::Prefix('!') => UnOp::Not,
             TokenTree::Prefix('-') => UnOp::Neg,
             _ => Err(())?,
         };
         Ok(Expr::UnOp(op, Box::new(rhs)))
-```
-</p>
-</details>
-```rust
     }
 
+    // Construct an unary postfix expression, e.g. 1?
     fn postfix(&mut self, lhs: Expr, tree: TokenTree) -> Result<Expr, ()> {
-```
-<details><summary>&lt; Implementation &rt;</summary>
-<p>
-```rust
         let op = match tree {
             TokenTree::Postfix('?') => UnOp::Try,
             _ => Err(())?,
         };
         Ok(Expr::UnOp(op, Box::new(lhs)))
-```
-</p>
-</details>
-```rust
     }
 }
 ```
 
-Methods take `&mut self`, allowing the parser to store state while parsing, e.g. accumulated errors and precedence/associativity information.
+Note that methods take `&mut self`, which allows the parser to store state while parsing, e.g. to accumulate errors and keep precedence/associativity information.
 
 To run the parser:
 
