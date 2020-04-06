@@ -1,12 +1,12 @@
 [package]
 name = "pratt"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Pratt parser for Rust"
 authors = ["Klas Segeljakt <klasseg@kth.se>"]
 edition = "2018"
 license = "MIT"
 readme = "./README.md"
-repostiory = "https://github.com/segeljakt/pratt/"
+repository = "https://github.com/segeljakt/pratt/"
 keywords = ["pratt", "parser"]
 categories = ["parsing"]
 
