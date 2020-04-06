@@ -1,0 +1,52 @@
+use crate::TokenTree;
+
+grammar<'i>;
+
+match {
+  "(",
+  ")",
+  "+",
+  "-",
+  "*",
+  "/",
+  "!",
+  "?",
+  r"[0-9]+" => Num
+}
+
+pub TokenTree = Group;
+
+Group: Vec<TokenTree> = <prefix:Prefix*> <primary:Primary> <mut postfix:Postfix*>
+                   <rest:(Infix Prefix* Primary Postfix*)*> => {
+    let mut group = prefix;
+    group.push(primary);
+    group.append(&mut postfix);
+    for (infix, mut prefix, primary, mut postfix) in rest {
+        group.push(infix);
+        group.append(&mut prefix);
+        group.push(primary);
+        group.append(&mut postfix);
+    }
+    group
+};
+
+Primary: TokenTree = {
+    "(" <Group> ")" => TokenTree::Group(<>),
+    Num             => TokenTree::Primary(<>.parse::<i32>().unwrap()),
+}
+
+Infix: TokenTree = {
+    "+" => TokenTree::Infix('+'),
+    "-" => TokenTree::Infix('-'),
+    "*" => TokenTree::Infix('*'),
+    "/" => TokenTree::Infix('/'),
+}
+
+Prefix: TokenTree = {
+    "-" => TokenTree::Prefix('-'),
+    "!" => TokenTree::Prefix('!'),
+}
+
+Postfix: TokenTree = {
+    "?" => TokenTree::Postfix('?'),
+}
