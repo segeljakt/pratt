@@ -1,6 +1,6 @@
 [package]
 name = "pratt"
-version = "0.1.3"
+version = "0.1.4"
 description = "A Pratt parser for Rust"
 authors = ["Klas Segeljakt <klasseg@kth.se>"]
 edition = "2018"

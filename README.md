@@ -6,12 +6,12 @@
   <img src="https://github.com/segeljakt/assets/blob/master/Trees.jpg?raw=true">
 </p>
 
-This crate provides offers a high-level interface for implementing Pratt parsers in Rust.
+This crate leverages a high-level interface for implementing Pratt parsers in Rust.
 
 > In computer science, a Pratt parser is an improved recursive descent parser that associates semantics with tokens instead of grammar rules.
 - https://en.wikipedia.org/wiki/Pratt_parser
 
-In other words, you can use a Pratt parser to parse trees of expressions that might contain *unary*, *binary*, and *n-ary* operators of varying *precedence* and *associativity*.
+In other words, you can use a Pratt parser to parse trees of expressions that might contain *unary* and *binary* operators of varying *precedence* and *associativity*.
 
 ## Example
 
