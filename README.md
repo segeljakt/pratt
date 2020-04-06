@@ -1,5 +1,9 @@
 <h1 align="center">pratt - A General Purpose Pratt Parser for Rust</h1>
 
+<p align="center">
+  <img src="https://github.com/segeljakt/assets/blob/master/Trees.jpg?raw=true">
+</p>
+
 This crate provides offers a high-level interface for implementing Pratt parsers in Rust.
 
 > In computer science, a Pratt parser is an improved recursive descent parser that associates semantics with tokens instead of grammar rules.
