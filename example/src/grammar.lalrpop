@@ -1,18 +1,6 @@
 use crate::TokenTree;
 
-grammar<'i>;
-
-match {
-  "(",
-  ")",
-  "+",
-  "-",
-  "*",
-  "/",
-  "!",
-  "?",
-  r"[0-9]+" => Num
-}
+grammar;
 
 pub TokenTree = Group;
 
@@ -32,7 +20,7 @@ Group: Vec<TokenTree> = <prefix:Prefix*> <primary:Primary> <mut postfix:Postfix*
 
 Primary: TokenTree = {
     "(" <Group> ")" => TokenTree::Group(<>),
-    Num             => TokenTree::Primary(<>.parse::<i32>().unwrap()),
+    r"[0-9]+"       => TokenTree::Primary(<>.parse::<i32>().unwrap()),
 }
 
 Infix: TokenTree = {

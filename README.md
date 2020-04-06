@@ -11,7 +11,7 @@ In other words, you can use a Pratt parser to parse trees of expressions that mi
 
 Assume we have a strange language which should parse strings such as `-1?+1*!-1?` into `(((((-(1))?)+(1))*(!(-(1))))?)`.
 
-Our strategy is to implement a parser which translates source code into token trees, and then token-trees into expression trees:
+Our strategy is to implement a parser which translates source code into token trees, and then token-trees into expression tree. The full implementation can be viewed [here](https://www.github.com/segeljakt/).
 
 ```rust
 // From this
@@ -57,12 +57,12 @@ We implement the parser from source code into token-trees with [LALRPOP](https:/
 ```rust
 use crate::TokenTree;
 
-grammar<'i>;
+grammar;
 
 pub TokenTree = Group;
 
 Group: Vec<TokenTree> = <prefix:Prefix*> <primary:Primary> <mut postfix:Postfix*>
-                   <rest:(Infix Prefix* Primary Postfix*)*> => {
+                        <rest:(Infix Prefix* Primary Postfix*)*> => {
     let mut group = prefix;
     group.push(primary);
     group.append(&mut postfix);
@@ -134,7 +134,7 @@ where
     fn primary(&mut self, tree: TokenTree) -> Result<Expr, ()> {
         match tree {
             TokenTree::Primary(num) => Ok(Expr::Int(num)),
-            TokenTree::Group(group) => self.parse(group.into_iter()),
+            TokenTree::Group(group) => self.parse(&mut group.into_iter()),
             _ => Err(()),
         }
     }
@@ -182,7 +182,7 @@ fn main() {
         .parse("-1?+1*!-1?")
         .unwrap();
     let expr = ExprParser
-        .parse(tt.into_iter())
+        .parse(&mut tt.into_iter())
         .unwrap();
     println!("{:#?}", expr);
 }

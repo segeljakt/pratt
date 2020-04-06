@@ -36,7 +36,7 @@ pub trait PrattParser<Inputs> where Inputs: Iterator<Item = Self::Input>{
 
     fn postfix(&mut self, lhs: Self::Output, op: Self::Input) -> Result<Self::Output, Self::Error>;
 
-    fn parse(&mut self, ref mut inputs: Inputs) -> Result<Self::Output, Self::Error> {
+    fn parse(&mut self, inputs: &mut Inputs) -> Result<Self::Output, Self::Error> {
         self.parse_input(&mut inputs.peekable(), Precedence(0))
     }
 
