@@ -1,5 +1,7 @@
 <h1 align="center">pratt - A General Purpose Pratt Parser for Rust</h1>
 
+![Crates.io (latest)](https://img.shields.io/crates/dv/pratt)
+
 <p align="center">
   <img src="https://github.com/segeljakt/assets/blob/master/Trees.jpg?raw=true">
 </p>
