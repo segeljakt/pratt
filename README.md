@@ -15,7 +15,7 @@ In other words, you can use a Pratt parser to parse trees of expressions that mi
 
 Assume we have a strange language which should parse strings such as `-1?+1*!-1?` into `(((((-(1))?)+(1))*(!(-(1))))?)`.
 
-Our strategy is to implement a parser which translates source code into token trees, and then token-trees into expression tree. The full implementation can be viewed [here](https://www.github.com/segeljakt/).
+Our strategy is to implement a parser which parses source code into token trees, and then token-trees into an expression tree. The full implementation can be viewed [here](https://www.github.com/segeljakt/).
 
 ```rust
 // From this
