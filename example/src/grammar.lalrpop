@@ -2,39 +2,26 @@ use crate::TokenTree;
 
 grammar;
 
-pub TokenTree = Group;
-
-Group: Vec<TokenTree> = <prefix:Prefix*> <primary:Primary> <mut postfix:Postfix*>
-                   <rest:(Infix Prefix* Primary Postfix*)*> => {
-    let mut group = prefix;
-    group.push(primary);
-    group.append(&mut postfix);
-    for (infix, mut prefix, primary, mut postfix) in rest {
-        group.push(infix);
-        group.append(&mut prefix);
-        group.push(primary);
-        group.append(&mut postfix);
-    }
-    group
-};
-
-Primary: TokenTree = {
-    "(" <Group> ")" => TokenTree::Group(<>),
-    r"[0-9]+"       => TokenTree::Primary(<>.parse::<i32>().unwrap()),
+match {
+  "if", "then", "else",
+  "+", "-", "*", "/", "==", "&", "!", "?", ":",
+  "(", ")",
+} else {
+  "=", 
+  r"[0-9]+" => Literal,
+  r"[a-zA-Z]+" => Ident,
 }
 
-Infix: TokenTree = {
-    "+" => TokenTree::Infix('+'),
-    "-" => TokenTree::Infix('-'),
-    "*" => TokenTree::Infix('*'),
-    "/" => TokenTree::Infix('/'),
+pub TokenStream: Vec<TokenTree<'input>> = TokenTree+;
+
+TokenTree: TokenTree<'input> = {
+  "(" <TokenTree+> ")" => TokenTree::Group(<>),
+  Literal              => TokenTree::Literal(<>),
+  Keyword              => TokenTree::Keyword(<>),
+  Ident                => TokenTree::Ident(<>),
+  Punct                => TokenTree::Punct(<>),
 }
 
-Prefix: TokenTree = {
-    "-" => TokenTree::Prefix('-'),
-    "!" => TokenTree::Prefix('!'),
-}
+Keyword = { "if", "then", "else" }
 
-Postfix: TokenTree = {
-    "?" => TokenTree::Postfix('?'),
-}
+Punct = { "+", "-", "*", "/", "==", "=", "&", "!", "?", ":" }

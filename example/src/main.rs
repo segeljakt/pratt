@@ -1,113 +1,159 @@
 use lalrpop_util::lalrpop_mod;
-use pratt::{Affix, Associativity, PrattParser, Precedence};
+use pratt::{Affix, Arity, Associativity, Precedence, Op, PrattParser};
 
 lalrpop_mod!(pub grammar);
 
 #[derive(Debug)]
 pub enum Expr {
-    BinOp(Box<Expr>, BinOp, Box<Expr>),
-    UnOp(UnOp, Box<Expr>),
+    UnaryOp(UnaryOp, Box<Expr>),
+    BinaryOp(BinaryOp, Box<Expr>, Box<Expr>),
+    TernaryOp(TernaryOp, Box<Expr>, Box<Expr>, Box<Expr>),
     Int(i32),
-    Unknown(String),
+    Ident(String),
 }
 
 #[derive(Debug)]
-pub enum BinOp {
+pub enum TernaryOp {
+    IfThenElse,
+    Assign,
+}
+
+#[derive(Debug)]
+pub enum BinaryOp {
     Add,
     Sub,
     Mul,
     Div,
+    Eq,
 }
 
 #[derive(Debug)]
-pub enum UnOp {
-    Not,
-    Neg,
-    Try,
+pub enum UnaryOp {
+    Fac,
+    Ref,
 }
 
-#[derive(Debug)]
-pub enum TokenTree {
-    Prefix(char),
-    Postfix(char),
-    Infix(char),
-    Primary(i32),
-    Group(Vec<TokenTree>),
+#[derive(Debug, PartialEq)]
+pub enum TokenTree<'i> {
+    Group(Vec<TokenTree<'i>>),
+    Literal(&'i str),
+    Ident(&'i str),
+    Keyword(&'i str),
+    Punct(&'i str),
 }
 
 struct ExprParser;
 
-impl<I> PrattParser<I> for ExprParser
+impl<'i, I> PrattParser<I> for ExprParser
 where
-    I: Iterator<Item = TokenTree>,
+    I: Iterator<Item = TokenTree<'i>>,
 {
     type Error = ();
-    type Input = TokenTree;
+    type Input = TokenTree<'i>;
     type Output = Expr;
 
-    // Query information about an operator (Affix, Precedence, Associativity)
-    fn query(&mut self, tree: &TokenTree) -> Option<Affix> {
+    // Query information about an operator
+    fn query(&mut self, tree: &TokenTree) -> Result<Op, ()> {
+        use {Affix::*, Arity::*, Associativity::*, TokenTree::*};
         let affix = match tree {
-            TokenTree::Postfix('?') => Affix::Postfix(Precedence(1)),
-            TokenTree::Infix('+') => Affix::Infix(Precedence(2), Associativity::Left),
-            TokenTree::Infix('-') => Affix::Infix(Precedence(2), Associativity::Left),
-            TokenTree::Infix('*') => Affix::Infix(Precedence(2), Associativity::Right),
-            TokenTree::Infix('/') => Affix::Infix(Precedence(2), Associativity::Right),
-            TokenTree::Prefix('-') => Affix::Prefix(Precedence(3)),
-            TokenTree::Prefix('!') => Affix::Prefix(Precedence(3)),
-            _ => None?,
-        };
-        Some(affix)
-    }
-
-    // Construct a primary expression, e.g. a number
-    fn primary(&mut self, tree: TokenTree) -> Result<Expr, ()> {
-        match tree {
-            TokenTree::Primary(num) => Ok(Expr::Int(num)),
-            TokenTree::Group(group) => self.parse(&mut group.into_iter()),
-            _ => Err(()),
-        }
-    }
-
-    // Construct an binary infix expression, e.g. 1+1
-    fn infix(&mut self, lhs: Expr, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
-        let op = match tree {
-            TokenTree::Infix('+') => BinOp::Add,
-            TokenTree::Infix('-') => BinOp::Sub,
-            TokenTree::Infix('*') => BinOp::Mul,
-            TokenTree::Infix('/') => BinOp::Div,
+            Punct("==")     => Op(Infix(Null),  Binary,  Precedence(1)),
+            Punct("+")      => Op(Infix(Left),  Binary,  Precedence(3)),
+            Punct("-")      => Op(Infix(Left),  Binary,  Precedence(3)),
+            Punct("*")      => Op(Infix(Right), Binary,  Precedence(3)),
+            Punct("/")      => Op(Infix(Right), Binary,  Precedence(3)),
+            Punct("&")      => Op(Prefix,       Unary,   Precedence(4)),
+            Punct("!")      => Op(Postfix,      Unary,   Precedence(4)),
+            Punct("?")      => Op(Infix(Right), Ternary, Precedence(4)),
+            Punct(":")      => Op(Interfix,     Nullary, Precedence(0)),
+            Keyword("if")   => Op(Prefix,       Ternary, Precedence(4)),
+            Keyword("then") => Op(Interfix,     Nullary, Precedence(0)),
+            Keyword("else") => Op(Interfix,     Nullary, Precedence(0)),
+            Punct("=")      => Op(Postfix,      Ternary, Precedence(9)),
+            Ident(_)        => Op(Nilfix,       Nullary, Precedence(0)),
+            Literal(_)      => Op(Nilfix,       Nullary, Precedence(0)),
+            Group(_)        => Op(Nilfix,       Nullary, Precedence(0)),
             _ => Err(())?,
         };
-        Ok(Expr::BinOp(Box::new(lhs), op, Box::new(rhs)))
+        Ok(affix)
     }
 
-    // Construct an unary prefix expression, e.g. !1
-    fn prefix(&mut self, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
-        let op = match tree {
-            TokenTree::Prefix('!') => UnOp::Not,
-            TokenTree::Prefix('-') => UnOp::Neg,
+    // Construct a nullary expression, e.g. a number
+    fn nullary(&mut self, tree: TokenTree<'i>) -> Result<Expr, ()> {
+        use TokenTree::*;
+        let expr = match tree {
+            Literal(s) => Expr::Int(s.parse::<i32>().unwrap()),
+            Ident(s) => Expr::Ident(s.to_owned()),
+            Group(group) => self.parse(&mut group.into_iter())?,
             _ => Err(())?,
         };
-        Ok(Expr::UnOp(op, Box::new(rhs)))
+        Ok(expr)
     }
 
-    // Construct an unary postfix expression, e.g. 1?
-    fn postfix(&mut self, lhs: Expr, tree: TokenTree) -> Result<Expr, ()> {
+    // Construct an unary expression, e.g. 1! or &1
+    fn unary(&mut self, tree: TokenTree<'i>, rhs: Expr) -> Result<Expr, ()> {
+        use TokenTree::*;
         let op = match tree {
-            TokenTree::Postfix('?') => UnOp::Try,
+            Punct("!") => UnaryOp::Fac,
+            Punct("&") => UnaryOp::Ref,
             _ => Err(())?,
         };
-        Ok(Expr::UnOp(op, Box::new(lhs)))
+        Ok(Expr::UnaryOp(op, Box::new(rhs)))
+    }
+
+    // Construct an binary expression, e.g. 1+1
+    fn binary(&mut self, tree: TokenTree<'i>, lhs: Expr, rhs: Expr) -> Result<Expr, ()> {
+        use TokenTree::*;
+        let op = match tree {
+            Punct("+") => BinaryOp::Add,
+            Punct("-") => BinaryOp::Sub,
+            Punct("*") => BinaryOp::Mul,
+            Punct("/") => BinaryOp::Div,
+            Punct("==") => BinaryOp::Eq,
+            _ => Err(())?,
+        };
+        Ok(Expr::BinaryOp(op, Box::new(lhs), Box::new(rhs)))
+    }
+
+    // Construct an ternary expression, e.g. 1 ? 2 : 3 or if a then b else c
+    fn ternary(
+        &mut self,
+        tree: TokenTree<'i>,
+        lhs: Expr,
+        mid: Expr,
+        rhs: Expr,
+    ) -> Result<Expr, ()> {
+        use TokenTree::*;
+        let op = match tree {
+            Keyword("if") => TernaryOp::IfThenElse,
+            Punct("?") => TernaryOp::IfThenElse,
+            Punct("=") => TernaryOp::Assign,
+            _ => Err(())?,
+        };
+        Ok(Expr::TernaryOp(
+            op,
+            Box::new(lhs),
+            Box::new(mid),
+            Box::new(rhs),
+        ))
     }
 }
 
 fn main() {
-    let tt = grammar::TokenTreeParser::new()
-        .parse("-1?+1*!-1?")
-        .unwrap();
-    let expr = ExprParser
-        .parse(&mut tt.into_iter())
-        .unwrap();
-    println!("{:#?}", expr);
-}
+    let ts = dbg!(grammar::TokenStreamParser::new().parse("1 == 1 == 1").unwrap());
+    dbg!(ExprParser.parse(&mut ts.into_iter()).unwrap());
 
+    let ts = grammar::TokenStreamParser::new()
+        .parse("1?1:1?1:1")
+        .unwrap();
+    dbg!(ExprParser.parse(&mut ts.into_iter()).unwrap());
+
+    let ts = grammar::TokenStreamParser::new()
+        .parse("if 1 then if 2 then 3 else 4 else 5")
+        .unwrap();
+    dbg!(ExprParser.parse(&mut ts.into_iter()).unwrap());
+
+    let ts = dbg!(grammar::TokenStreamParser::new()
+        .parse("x = 1 (y = x z = y z)")
+        .unwrap());
+    dbg!(ExprParser.parse(&mut ts.into_iter()).unwrap());
+}
