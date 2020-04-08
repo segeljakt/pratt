@@ -11,11 +11,119 @@ This crate leverages a high-level interface for implementing Pratt parsers in Ru
 > In computer science, a Pratt parser is an improved recursive descent parser that associates semantics with tokens instead of grammar rules.
 - https://en.wikipedia.org/wiki/Pratt_parser
 
-In other words, you can use a Pratt parser to parse trees of expressions that might contain *unary* and *binary* operators of varying *precedence* and *associativity*.
+In other words, you can use a Pratt parser to parse trees of expressions that might contain different kinds of operators.
+
+# Operator Theory
+
+Operators in programming, and mathematics for that matter, have properties which impact how they are parsed. There are four notable properties:
+
+* [Arity](https://en.wikipedia.org/wiki/Arity): Determines the number of operands an operator takes.
+
+```
+a     # Nullary (0 operands)
+!a    # Unary   (1 operand)
+a+b   # Binary  (2 operands)
+a?b:c # Ternary (3 operands)
+```
+
+The full list:
+
+```
+ #  Arity (Latin) : Adicity (Greek)
+  -----------------------------------
+ 0: Nullary       : Niladic
+ 1: Unary         : Monadic
+ 2: Binary        : Dyadic
+ 3: Ternary       : Triadic
+ 4: Quaternary    : Tetradic
+ 5: Quinary       : Pentadic
+ 6: Senary        : Hexadic
+ 7: Septenary     : Hebdomadic
+ 8: Octonary      : Ogdoadic
+ 9: Novenary      : Enneadic
+10: Denary        : Decadic
+
+>2: Multary       : Polyadic
+  : N-Ary         : Variadic
+```
+
+* [Affix](https://en.wikipedia.org/wiki/Affix): Determines in which position the operator occurs:
+
+```
+a    # Nilfix    (Nowhere)
+!a   # Prefix    (Before)
+b?   # Postfix   (After)
+a+b  # Infix     (Inbetween connector)
+a,b  # Interfix  (Inbetween separator)
+[a]  # Circumfix (Around)
+```
+
+In linguistics, we have:
+
+```
+Affix        Schema                       Description
+-----------------------------------------------------
+Nilfix     : expr                       : Appears nowhere
+Prefix     : <prefix-expr               : Appears before the expr
+Prefixoid  : <prefixoid>-expr           : Appears before the expr, but is only partially bound to it
+Postfix    : expr-<postfix>             : Appears after the expr
+Postfixoid : expr-<postfixoid>          : Appears after the expr, but is only partially bound to it
+Infix      : ex<infix>pr                : Appears within a expr
+Circumfix  : <circumfix>expr<circumfix> : One portion appears before the expr, the other after
+Interfix   : expr<interfix>expr         : Links two expr together in a compound
+Duplifix   : expr<duplifix>             : Incorporates a reduplicated portion of an expr
+Transfix   : e<transfix>xp<transfix>r   : A discontinuous affix that interleaves within a discontinuous expr
+Simulfix   : expr\simulfix              : Changes a segment of a expr
+Suprafix   : expr\suprafix              : Changes a suprasegmental feature of a expr
+Disfix     : ex⟩disfix⟨pr               : The elision of a portion of a expr
+```
+
+* [Precedence](https://en.wikipedia.org/wiki/Order_of_operations) (or binding power): Determines the order of operations.
+
+```
+a*b+c == (a*b)+c  # * > +
+a*b?  == a*(b?)   # ? > *
+!b?   == (!b)?    # ! > ?
+```
+
+* [Associativity](https://en.wikipedia.org/wiki/Associative_property): Determines how operators nest.
+
+```
+a-b-c     == (a-b)-c         # Left-associative
+a^b^c     == a^(b^c)         # Right-associative
+a==b      == (a==b)          # Non-associative (Must be parenthesized)
+a?b:c?d:e == a?(b:(c?(d:e))) # Right-associative
+```
+
+# Reflections
+
+From standard terminology, a parser can be viewed as a virtual machine which reads tokens (operators) and executes operations.
+
+We should be able to translate any kind of token into an operation.
+```
+if a then b else c
+  * if        = prefix-ternary (w.r.t a)
+  * a,b,c     = nilfix-nullary
+  * then      = interfix-nullary
+  * else      = interfix-nullary
+
+* Nullary operators always have minimum precedence:
+  if a then if b then c else d else e == if a then (if b then c else d) else e
+
+x = 1
+x
+  * x,1       = nilfix-nullary
+  * =         = postfix-ternary
+
+[a;b;c]
+  * [,]       = circumfix-N-ary
+  * ;         = interfix-nullary
+  * a,b,c     = nilfix-nullary
+```
 
 ## Example
 
-Assume we have a strange language which should parse strings such as `-1?+1*!-1?` into `(((((-(1))?)+(1))*(!(-(1))))?)`.
+Theory aside, what is this crate good for? Assume we have a strange language which should parse strings such as `-1?+1*!-1?` into `(((((-(1))?)+(1))*(!(-(1))))?)`.
 
 Our strategy is to implement a parser which parses source code into token trees, and then token-trees into an expression tree. The full implementation can be viewed [here](https://github.com/segeljakt/pratt/tree/master/example).
 

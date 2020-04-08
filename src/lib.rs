@@ -1,3 +1,5 @@
+use {std::iter::Peekable, Affix::*, Associativity::*};
+
 pub enum Associativity {
     Null,
     Left,
@@ -32,6 +34,7 @@ pub enum Arity {
 }
 
 pub enum Affix {
+    Circumfix,
     Interfix,
     Nilfix,
     Prefix,
@@ -40,8 +43,6 @@ pub enum Affix {
 }
 
 pub struct Op(pub Affix, pub Arity, pub Precedence);
-
-use std::iter::Peekable;
 
 pub trait PrattParser<Inputs>
 where
@@ -116,6 +117,7 @@ where
         inputs: &mut Peekable<&mut Inputs>,
     ) -> Result<Self::Output, Self::Error> {
         match self.query(&input)? {
+            Op(Affix::Nilfix, Arity::Nullary, _) => self.nullary(input),
             // &a
             Op(Affix::Prefix, Arity::Unary, bp) => {
                 let rbp = bp.lower();
@@ -126,13 +128,19 @@ where
             Op(Affix::Prefix, Arity::Ternary, bp) => {
                 let rbp = bp.lower();
                 let lhs = self.parse_until(inputs, Precedence::min())?;
-                inputs.next();
+                self.eat_interfix(inputs)?;
                 let mid = self.parse_until(inputs, Precedence::min())?;
-                inputs.next();
+                self.eat_interfix(inputs)?;
                 let rhs = self.parse_until(inputs, rbp)?;
                 self.ternary(input, lhs, mid, rhs)
             }
-            Op(Affix::Nilfix, Arity::Nullary, _) => self.nullary(input),
+            // ||a||
+            Op(Affix::Circumfix, Arity::Unary, bp) => {
+                let rbp = bp.lower();
+                let rhs = self.parse_until(inputs, rbp)?;
+                self.eat_interfix(inputs)?;
+                self.unary(input, rhs)
+            }
             _ => panic!(
                 "Expected unary-prefix or nullary-nilfix operator, found {:?}",
                 input
@@ -140,12 +148,16 @@ where
         }
     }
 
-    fn eat_interfix(&mut self, inputs: &mut Peekable<&mut Inputs>) {
+    fn eat_interfix(&mut self, inputs: &mut Peekable<&mut Inputs>) -> Result<(), Self::Error> {
         if let Some(input) = inputs.peek() {
-            if let Ok(Op(Affix::Interfix, _, _)) = self.query(input) {
-                inputs.next();
-            }
+            match self.query(input)? {
+                Op(Affix::Interfix, ..) | Op(Affix::Circumfix, ..) => {
+                    inputs.next();
+                }
+                _ => {}
+            };
         }
+        Ok(())
     }
 
     /// Left-Denotation
@@ -155,7 +167,6 @@ where
         inputs: &mut Peekable<&mut Inputs>,
         lhs: Self::Output,
     ) -> Result<Self::Output, Self::Error> {
-        use Associativity::*;
         match self.query(&input)? {
             // a!
             Op(Affix::Postfix, Arity::Unary, _) => self.unary(input, lhs),
@@ -163,7 +174,7 @@ where
             Op(Affix::Postfix, Arity::Ternary, bp) => {
                 let rbp = bp.lower();
                 let mid = self.parse_until(inputs, Precedence::min())?;
-                self.eat_interfix(inputs);
+                self.eat_interfix(inputs)?;
                 let rhs = self.parse_until(inputs, rbp)?;
                 self.ternary(input, lhs, mid, rhs)
             }
@@ -185,7 +196,7 @@ where
                     Null => bp,
                 };
                 let mid = self.parse_until(inputs, Precedence::min())?;
-                self.eat_interfix(inputs);
+                self.eat_interfix(inputs)?;
                 let rhs = self.parse_until(inputs, rbp)?;
                 self.ternary(input, lhs, mid, rhs)
             }
@@ -198,9 +209,9 @@ where
 
     /// Left-Binding-Power
     fn lbp(&mut self, input: &Self::Input) -> Result<Precedence, Self::Error> {
-        use Affix::*;
         let lbp = match self.query(input)? {
             Op(Interfix, ..) => Precedence::min(),
+            Op(Circumfix, ..) => Precedence::min(),
             Op(Nilfix, ..) => Precedence::min(),
             Op(Prefix, ..) => Precedence::min(),
             Op(Postfix, _, bp) => bp,
@@ -220,9 +231,9 @@ where
 
     /// Next-Binding-Power
     fn nbp(&mut self, input: &Self::Input) -> Result<Precedence, Self::Error> {
-        use {Affix::*, Associativity::*};
         let nbp = match self.query(input)? {
             Op(Interfix, ..) => Precedence::max(),
+            Op(Circumfix, ..) => Precedence::max(),
             Op(Nilfix, ..) => Precedence::max(),
             Op(Prefix, ..) => Precedence::max(),
             Op(Postfix, ..) => Precedence::max(),
