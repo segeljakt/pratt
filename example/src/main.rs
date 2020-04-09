@@ -57,25 +57,26 @@ where
     // Query information about an operator
     fn query(&mut self, t: &TokenTree) -> Result<Op, ()> {
         use {Affix::*, Arity::*, Associativity::*, TokenTree::*};
+        #[rustfmt::skip]
         let affix = match t {
-            Punct("||") => Op(Circumfix, Unary, Precedence(5)),
-            Punct("|") => Op(Circumfix, Unary, Precedence(5)),
-            Punct("==") => Op(Infix(Null), Binary, Precedence(1)),
-            Punct("+") => Op(Infix(Left), Binary, Precedence(3)),
-            Punct("-") => Op(Infix(Left), Binary, Precedence(3)),
-            Punct("*") => Op(Infix(Right), Binary, Precedence(3)),
-            Punct("/") => Op(Infix(Right), Binary, Precedence(3)),
-            Punct("&") => Op(Prefix, Unary, Precedence(4)),
-            Punct("!") => Op(Postfix, Unary, Precedence(4)),
-            Punct("?") => Op(Infix(Right), Ternary, Precedence(4)),
-            Punct(":") => Op(Interfix, Nullary, Precedence(0)),
-            Keyword("if") => Op(Prefix, Ternary, Precedence(4)),
-            Keyword("then") => Op(Interfix, Nullary, Precedence(0)),
-            Keyword("else") => Op(Interfix, Nullary, Precedence(0)),
-            Punct("=") => Op(Postfix, Ternary, Precedence(9)),
-            Ident(_) => Op(Nilfix, Nullary, Precedence(0)),
-            Literal(_) => Op(Nilfix, Nullary, Precedence(0)),
-            Group(_) => Op(Nilfix, Nullary, Precedence(0)),
+            Punct("||")     => Op::new("||",   Circumfix,          Unary, Precedence(5)).followed_by(&["||"]),
+            Punct("|")      => Op::new("|",    Circumfix,          Unary, Precedence(5)).followed_by(&["|"]),
+            Punct("==")     => Op::new("==",       Infix(Null),   Binary, Precedence(1)),
+            Punct("+")      => Op::new("+",        Infix(Left),   Binary, Precedence(3)),
+            Punct("-")      => Op::new("-",        Infix(Left),   Binary, Precedence(3)),
+            Punct("*")      => Op::new("*",        Infix(Right),  Binary, Precedence(3)),
+            Punct("/")      => Op::new("/",        Infix(Right),  Binary, Precedence(3)),
+            Punct("&")      => Op::new("&",       Prefix,          Unary, Precedence(4)),
+            Punct("!")      => Op::new("!",      Postfix,          Unary, Precedence(4)),
+            Punct("?")      => Op::new("?",        Infix(Right), Ternary, Precedence(4)).followed_by(&[":"]),
+            Punct(":")      => Op::new(":",     Interfix,        Nullary, Precedence(0)),
+            Keyword("if")   => Op::new("if",      Prefix,        Ternary, Precedence(4)).followed_by(&["then", "else"]),
+            Keyword("then") => Op::new("then",  Interfix,        Nullary, Precedence(0)),
+            Keyword("else") => Op::new("else",  Interfix,        Nullary, Precedence(0)),
+            Punct("=")      => Op::new("=",      Postfix,        Ternary, Precedence(9)),
+            Ident(_)        => Op::new("id",      Nilfix,        Nullary, Precedence(0)),
+            Literal(_)      => Op::new("lit",     Nilfix,        Nullary, Precedence(0)),
+            Group(_)        => Op::new("grp",     Nilfix,        Nullary, Precedence(0)),
             _ => Err(())?,
         };
         Ok(affix)
@@ -135,26 +136,26 @@ where
 }
 
 fn main() {
-//     let ts = grammar::TokenStreamParser::new()
-//         .parse("1 == 1 == 1")
-//         .unwrap();
-//     ExprParser.parse(&mut ts.into_iter()).unwrap();
-//
-//     let ts = grammar::TokenStreamParser::new()
-//         .parse("1?1:1?1:1")
-//         .unwrap();
-//     ExprParser.parse(&mut ts.into_iter()).unwrap();
-//
-//     let ts = grammar::TokenStreamParser::new()
-//         .parse("if 1 then if 2 then 3 else 4 else 5")
-//         .unwrap();
-//     ExprParser.parse(&mut ts.into_iter()).unwrap();
-//
-//     let ts = grammar::TokenStreamParser::new()
-//         .parse("x = 1 (y = x z = y z)")
-//         .unwrap();
-//     ExprParser.parse(&mut ts.into_iter()).unwrap();
-//
+    let ts = grammar::TokenStreamParser::new()
+        .parse("1 == 1 == 1")
+        .unwrap();
+    dbg!(ExprParser.parse(&mut ts.into_iter()).unwrap());
+
+    let ts = grammar::TokenStreamParser::new()
+        .parse("1?1:1?1:1")
+        .unwrap();
+    dbg!(ExprParser.parse(&mut ts.into_iter()).unwrap());
+
+    let ts = grammar::TokenStreamParser::new()
+        .parse("if 1 then if 2 then 3 else 4 else 5")
+        .unwrap();
+    dbg!(ExprParser.parse(&mut ts.into_iter()).unwrap());
+
+    let ts = grammar::TokenStreamParser::new()
+        .parse("x = 1 (y = x z = y z)")
+        .unwrap();
+    dbg!(ExprParser.parse(&mut ts.into_iter()).unwrap());
+
     let ts = grammar::TokenStreamParser::new()
         .parse("|x| + |y|")
         .unwrap();

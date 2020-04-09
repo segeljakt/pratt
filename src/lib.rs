@@ -42,7 +42,25 @@ pub enum Affix {
     Infix(Associativity),
 }
 
-pub struct Op(pub Affix, pub Arity, pub Precedence);
+pub struct Op(
+    &'static str,
+    Affix,
+    Arity,
+    Precedence,
+    &'static [&'static str],
+);
+
+impl Op {
+    #[inline(always)]
+    pub fn new(name: &'static str, affix: Affix, arity: Arity, precedence: Precedence) -> Op {
+        Op(name, affix, arity, precedence, &["", "", "", ""])
+    }
+    #[inline(always)]
+    pub const fn followed_by(mut self, names: &'static [&'static str]) -> Op {
+        self.4 = names;
+        self
+    }
+}
 
 pub trait PrattParser<Inputs>
 where
@@ -117,28 +135,30 @@ where
         inputs: &mut Peekable<&mut Inputs>,
     ) -> Result<Self::Output, Self::Error> {
         match self.query(&input)? {
-            Op(Affix::Nilfix, Arity::Nullary, _) => self.nullary(input),
+            Op(_, Affix::Nilfix, Arity::Nullary, _, _) => self.nullary(input),
             // &a
-            Op(Affix::Prefix, Arity::Unary, bp) => {
+            Op(_, Affix::Prefix, Arity::Unary, bp, _) => {
                 let rbp = bp.lower();
                 let rhs = self.parse_until(inputs, rbp)?;
                 self.unary(input, rhs)
             }
             // if a then b else c
-            Op(Affix::Prefix, Arity::Ternary, bp) => {
+            Op(_, Affix::Prefix, Arity::Ternary, bp, follow) => {
+                let ref mut follow = follow.iter().copied();
                 let rbp = bp.lower();
                 let lhs = self.parse_until(inputs, Precedence::min())?;
-                self.eat_interfix(inputs)?;
+                self.eat_interfix(follow, inputs)?;
                 let mid = self.parse_until(inputs, Precedence::min())?;
-                self.eat_interfix(inputs)?;
+                self.eat_interfix(follow, inputs)?;
                 let rhs = self.parse_until(inputs, rbp)?;
                 self.ternary(input, lhs, mid, rhs)
             }
             // ||a||
-            Op(Affix::Circumfix, Arity::Unary, bp) => {
+            Op(_, Affix::Circumfix, Arity::Unary, bp, follow) => {
+                let ref mut follow = follow.iter().copied();
                 let rbp = bp.lower();
                 let rhs = self.parse_until(inputs, rbp)?;
-                self.eat_interfix(inputs)?;
+                self.eat_interfix(follow, inputs)?;
                 self.unary(input, rhs)
             }
             _ => panic!(
@@ -148,15 +168,27 @@ where
         }
     }
 
-    fn eat_interfix(&mut self, inputs: &mut Peekable<&mut Inputs>) -> Result<(), Self::Error> {
-        if let Some(input) = inputs.peek() {
-            match self.query(input)? {
-                Op(Affix::Interfix, ..) | Op(Affix::Circumfix, ..) => {
-                    inputs.next();
+    fn eat_interfix<F>(
+        &mut self,
+        follow: &mut F,
+        inputs: &mut Peekable<&mut Inputs>,
+    ) -> Result<(), Self::Error>
+    where
+        F: Iterator<Item = &'static str>,
+    {
+        if let (Some(input), Some(follow)) = (inputs.peek(), follow.next()) {
+            if follow != "" {
+                match self.query(input)? {
+                    Op(name, Affix::Interfix, ..) | Op(name, Affix::Circumfix, ..) => {
+                        if name == follow {
+                            inputs.next();
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             };
         }
+
         Ok(())
     }
 
@@ -169,17 +201,18 @@ where
     ) -> Result<Self::Output, Self::Error> {
         match self.query(&input)? {
             // a!
-            Op(Affix::Postfix, Arity::Unary, _) => self.unary(input, lhs),
+            Op(_, Affix::Postfix, Arity::Unary, _, _) => self.unary(input, lhs),
             // x = 1 x
-            Op(Affix::Postfix, Arity::Ternary, bp) => {
+            Op(_, Affix::Postfix, Arity::Ternary, bp, follow) => {
+                let ref mut follow = follow.iter().copied();
                 let rbp = bp.lower();
                 let mid = self.parse_until(inputs, Precedence::min())?;
-                self.eat_interfix(inputs)?;
+                self.eat_interfix(follow, inputs)?;
                 let rhs = self.parse_until(inputs, rbp)?;
                 self.ternary(input, lhs, mid, rhs)
             }
             // a + b
-            Op(Affix::Infix(associativity), Arity::Binary, bp) => {
+            Op(_, Affix::Infix(associativity), Arity::Binary, bp, _) => {
                 let rbp = match associativity {
                     Left => bp,
                     Right => bp.lower(),
@@ -189,14 +222,15 @@ where
                 self.binary(input, lhs, rhs)
             }
             // a ? b : c
-            Op(Affix::Infix(associativity), Arity::Ternary, bp) => {
+            Op(_, Affix::Infix(associativity), Arity::Ternary, bp, follow) => {
+                let ref mut follow = follow.iter().copied();
                 let rbp = match associativity {
                     Left => bp,
                     Right => bp.lower(),
                     Null => bp,
                 };
                 let mid = self.parse_until(inputs, Precedence::min())?;
-                self.eat_interfix(inputs)?;
+                self.eat_interfix(follow, inputs)?;
                 let rhs = self.parse_until(inputs, rbp)?;
                 self.ternary(input, lhs, mid, rhs)
             }
@@ -210,12 +244,12 @@ where
     /// Left-Binding-Power
     fn lbp(&mut self, input: &Self::Input) -> Result<Precedence, Self::Error> {
         let lbp = match self.query(input)? {
-            Op(Interfix, ..) => Precedence::min(),
-            Op(Circumfix, ..) => Precedence::min(),
-            Op(Nilfix, ..) => Precedence::min(),
-            Op(Prefix, ..) => Precedence::min(),
-            Op(Postfix, _, bp) => bp,
-            Op(Infix(_), _, bp) => bp,
+            Op(_, Interfix, ..) => Precedence::min(),
+            Op(_, Circumfix, ..) => Precedence::min(),
+            Op(_, Nilfix, ..) => Precedence::min(),
+            Op(_, Prefix, ..) => Precedence::min(),
+            Op(_, Postfix, _, bp, _) => bp,
+            Op(_, Infix(_), _, bp, _) => bp,
         };
         Ok(lbp)
     }
@@ -232,14 +266,14 @@ where
     /// Next-Binding-Power
     fn nbp(&mut self, input: &Self::Input) -> Result<Precedence, Self::Error> {
         let nbp = match self.query(input)? {
-            Op(Interfix, ..) => Precedence::max(),
-            Op(Circumfix, ..) => Precedence::max(),
-            Op(Nilfix, ..) => Precedence::max(),
-            Op(Prefix, ..) => Precedence::max(),
-            Op(Postfix, ..) => Precedence::max(),
-            Op(Infix(Left), _, bp) => bp.raise(),
-            Op(Infix(Right), _, bp) => bp.raise(),
-            Op(Infix(Null), _, bp) => bp,
+            Op(_, Interfix, ..) => Precedence::max(),
+            Op(_, Circumfix, ..) => Precedence::max(),
+            Op(_, Nilfix, ..) => Precedence::max(),
+            Op(_, Prefix, ..) => Precedence::max(),
+            Op(_, Postfix, ..) => Precedence::max(),
+            Op(_, Infix(Left), _, bp, _) => bp.raise(),
+            Op(_, Infix(Right), _, bp, _) => bp.raise(),
+            Op(_, Infix(Null), _, bp, _) => bp,
         };
         Ok(nbp)
     }
