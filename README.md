@@ -1,6 +1,7 @@
 <h1 align="center">pratt - A General Purpose Pratt Parser for Rust</h1>
+<h2 align="center">(EXPERIMENTAL WORK IN PROGRESS)</h2>
 
-![Crates.io (latest)](https://img.shields.io/crates/dv/pratt)
+![crates.io (latest)](https://img.shields.io/crates/dv/pratt)
 
 <p align="center">
   <img src="https://github.com/segeljakt/assets/blob/master/Trees.jpg?raw=true">
@@ -13,12 +14,13 @@ This crate leverages a high-level interface for implementing Pratt parsers in Ru
 
 In other words, you can use a Pratt parser to parse trees of expressions that might contain different kinds of operators.
 
-# Operator Theory
+# Operator Parsing
 
-Operators in programming, and mathematics for that matter, have properties which impact how they are parsed. There are four notable properties:
+**Operators** in programming languages have properties which impact how they are parsed. There are four notable properties: **arity**, **affix**, **precedence**, and **associativity**. These are explained in the following sections.
 
-* [Arity](https://en.wikipedia.org/wiki/Arity): Determines the number of operands an operator takes.
+## Arity
 
+[**Arity**](https://en.wikipedia.org/wiki/Arity) determines the number of operands an operator takes.
 ```
 a     # Nullary (0 operands)
 !a    # Unary   (1 operand)
@@ -47,14 +49,16 @@ The full list:
   : N-Ary         : Variadic
 ```
 
-* [Affix](https://en.wikipedia.org/wiki/Affix): Determines in which position the operator occurs:
+## Affix
+
+[**Affix**](https://en.wikipedia.org/wiki/Affix) determines in which position the operator occurs:
 
 ```
 a    # Nilfix    (Nowhere)
 !a   # Prefix    (Before)
 b?   # Postfix   (After)
-a+b  # Infix     (Inbetween connector)
-a,b  # Interfix  (Inbetween separator)
+a+b  # Infix     (Inbetween, connecting)
+a,b  # Interfix  (Inbetween, separating)
 [a]  # Circumfix (Around)
 ```
 
@@ -78,7 +82,9 @@ Suprafix   : expr\suprafix              : Changes a suprasegmental feature of a 
 Disfix     : ex⟩disfix⟨pr               : The elision of a portion of a expr
 ```
 
-* [Precedence](https://en.wikipedia.org/wiki/Order_of_operations) (or binding power): Determines the order of operations.
+## Precedence
+
+[**Precedence**](https://en.wikipedia.org/wiki/Order_of_operations) (or binding power) determines the order of operations.
 
 ```
 a*b+c == (a*b)+c  # * > +
@@ -86,7 +92,9 @@ a*b?  == a*(b?)   # ? > *
 !b?   == (!b)?    # ! > ?
 ```
 
-* [Associativity](https://en.wikipedia.org/wiki/Associative_property): Determines how operators nest.
+## Associativity
+
+[**Associativity**](https://en.wikipedia.org/wiki/Associative_property) determines how operators nest.
 
 ```
 a-b-c     == (a-b)-c         # Left-associative
@@ -97,242 +105,59 @@ a?b:c?d:e == a?(b:(c?(d:e))) # Right-associative
 
 # Reflections
 
-From standard terminology, a parser can be viewed as a virtual machine which reads tokens (operators) and executes operations.
+From one point of view, a Pratt parser can be viewed as a virtual machine which reads tokens (operators) and executes operations.
 
-We should be able to translate any kind of token into an operation.
+If we look at tokens from common language constructs, I believe some have almost direct translations into the operator terminology:
+
 ```
 if a then b else c
-  * if        = prefix-ternary (w.r.t a)
-  * a,b,c     = nilfix-nullary
-  * then      = interfix-nullary
-  * else      = interfix-nullary
+  * if        # prefix-ternary (w.r.t a)
+  * a,b,c     # nilfix-nullary
+  * then      # interfix-nullary
+  * else      # interfix-nullary
 
-* Nullary operators always have minimum precedence:
+* Nullary operators have minimum precedence:
   if a then if b then c else d else e == if a then (if b then c else d) else e
 
 x = 1
 x
-  * x,1       = nilfix-nullary
-  * =         = postfix-ternary
+  * x,1       # nilfix-nullary
+  * =         # postfix-ternary
 
 [a;b;c]
-  * [,]       = circumfix-N-ary
-  * ;         = interfix-nullary
-  * a,b,c     = nilfix-nullary
+  * [,]       # circumfix-N-ary
+  * ;         # interfix-nullary
+  * a,b,c     # nilfix-nullary
 ```
 
 ## Example
 
-Theory aside, what is this crate good for? Assume we have a strange language which should parse strings such as `-1?+1*!-1?` into `(((((-(1))?)+(1))*(!(-(1))))?)`.
-
-Our strategy is to implement a parser which parses source code into token trees, and then token-trees into an expression tree. The full implementation can be viewed [here](https://github.com/segeljakt/pratt/tree/master/example).
+The goal of this crate is to offer a declarative interface for parsing generic operators. An generic operator is defined by its name, arity, affix, and precedence. Infix operators also have associativity.
 
 ```rust
-// From this
-#[derive(Debug)]
-pub enum TokenTree {
-    Prefix(char),
-    Postfix(char),
-    Infix(char),
-    Primary(i32),
-    Group(Vec<TokenTree>),
+// Op::new(<Name>, <Arity>, <Affix>, <Associativity>);
+
+pub enum Arity {
+    Nullary,
+    Unary,
+    Binary,
+    Ternary,
 }
 
-// To this
-#[derive(Debug)]
-pub enum Expr {
-    BinOp(Box<Expr>, BinOp, Box<Expr>),
-    UnOp(UnOp, Box<Expr>),
-    Int(i32),
-    Unknown(String),
+pub enum Affix {
+    Circumfix,
+    Interfix,
+    Nilfix,
+    Prefix,
+    Postfix,
+    Infix(Associativity),
 }
 
-#[derive(Debug)]
-pub enum BinOp {
-    Add, // +
-    Sub, // -
-    Mul, // *
-    Div, // /
-}
-
-#[derive(Debug)]
-pub enum UnOp {
-    Not, // !
-    Neg, // -
-    Try, // ?
+pub enum Associativity {
+    Null,
+    Left,
+    Right,
 }
 ```
 
-We implement the parser from source code into token-trees with [LALRPOP](https://github.com/lalrpop/lalrpop).
-
-<details><summary>LALRPOP Grammar</summary>
-<p>
-
-```rust
-use crate::TokenTree;
-
-grammar;
-
-pub TokenTree = Group;
-
-Group: Vec<TokenTree> = <prefix:Prefix*> <primary:Primary> <mut postfix:Postfix*>
-                        <rest:(Infix Prefix* Primary Postfix*)*> => {
-    let mut group = prefix;
-    group.push(primary);
-    group.append(&mut postfix);
-    for (infix, mut prefix, primary, mut postfix) in rest {
-        group.push(infix);
-        group.append(&mut prefix);
-        group.push(primary);
-        group.append(&mut postfix);
-    }
-    group
-};
-
-Primary: TokenTree = {
-    "(" <Group> ")" => TokenTree::Group(<>),
-    r"[0-9]+"       => TokenTree::Primary(<>.parse::<i32>().unwrap()),
-}
-
-Infix: TokenTree = {
-    "+" => TokenTree::Infix('+'),
-    "-" => TokenTree::Infix('-'),
-    "*" => TokenTree::Infix('*'),
-    "/" => TokenTree::Infix('/'),
-}
-
-Prefix: TokenTree = {
-    "-" => TokenTree::Prefix('-'),
-    "!" => TokenTree::Prefix('!'),
-}
-
-Postfix: TokenTree = {
-    "?" => TokenTree::Postfix('?'),
-}
-```
-
-</p>
-</details>
-
-Then, for the Pratt parser, we define a `struct ExprParser` and implement `pratt::ExprParser` for it.
-
-```rust
-use pratt::{Associativity, Affix, ExprParser, Precedence};
-
-struct ExprParser;
-
-impl<I> PrattParser<I> for ExprParser
-where
-    I: Iterator<Item = TokenTree>,
-{
-    type Error = ();
-    type Input = TokenTree;
-    type Output = Expr;
-
-    // Query information about an operator (Affix, Precedence, Associativity)
-    fn query(&mut self, tree: &TokenTree) -> Option<Affix> {
-        let affix = match tree {
-            TokenTree::Postfix('?') => Affix::Postfix(Precedence(1)),
-            TokenTree::Infix('+') => Affix::Infix(Precedence(2), Associativity::Left),
-            TokenTree::Infix('-') => Affix::Infix(Precedence(2), Associativity::Left),
-            TokenTree::Infix('*') => Affix::Infix(Precedence(2), Associativity::Right),
-            TokenTree::Infix('/') => Affix::Infix(Precedence(2), Associativity::Right),
-            TokenTree::Prefix('-') => Affix::Prefix(Precedence(3)),
-            TokenTree::Prefix('!') => Affix::Prefix(Precedence(3)),
-            _ => None?,
-        };
-        Some(affix)
-    }
-
-    // Construct a primary expression, e.g. a number
-    fn primary(&mut self, tree: TokenTree) -> Result<Expr, ()> {
-        match tree {
-            TokenTree::Primary(num) => Ok(Expr::Int(num)),
-            TokenTree::Group(group) => self.parse(&mut group.into_iter()),
-            _ => Err(()),
-        }
-    }
-
-    // Construct an binary infix expression, e.g. 1+1
-    fn infix(&mut self, lhs: Expr, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
-        let op = match tree {
-            TokenTree::Infix('+') => BinOp::Add,
-            TokenTree::Infix('-') => BinOp::Sub,
-            TokenTree::Infix('*') => BinOp::Mul,
-            TokenTree::Infix('/') => BinOp::Div,
-            _ => Err(())?,
-        };
-        Ok(Expr::BinOp(Box::new(lhs), op, Box::new(rhs)))
-    }
-
-    // Construct an unary prefix expression, e.g. !1
-    fn prefix(&mut self, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
-        let op = match tree {
-            TokenTree::Prefix('!') => UnOp::Not,
-            TokenTree::Prefix('-') => UnOp::Neg,
-            _ => Err(())?,
-        };
-        Ok(Expr::UnOp(op, Box::new(rhs)))
-    }
-
-    // Construct an unary postfix expression, e.g. 1?
-    fn postfix(&mut self, lhs: Expr, tree: TokenTree) -> Result<Expr, ()> {
-        let op = match tree {
-            TokenTree::Postfix('?') => UnOp::Try,
-            _ => Err(())?,
-        };
-        Ok(Expr::UnOp(op, Box::new(lhs)))
-    }
-}
-```
-
-Note that methods take `&mut self`, which allows the parser to store state while parsing, e.g. to accumulate errors and keep precedence/associativity information.
-
-To run the parser:
-
-```rust
-fn main() {
-    let tt = grammar::TokenTreeParser::new()
-        .parse("-1?+1*!-1?")
-        .unwrap();
-    let expr = ExprParser
-        .parse(&mut tt.into_iter())
-        .unwrap();
-    println!("{:#?}", expr);
-}
-```
-
-Output:
-
-```rust
-UnOp(
-    Try,
-    BinOp(
-        BinOp(
-            UnOp(
-                Try,
-                UnOp(
-                    Neg,
-                    Int(
-                        1,
-                    ),
-                ),
-            ),
-            Add,
-            Int(
-                1,
-            ),
-        ),
-        Mul,
-        UnOp(
-            Not,
-            UnOp(
-                Neg,
-                Int(
-                    1,
-                ),
-            ),
-        ),
-    ),
-)
-```
+A work in progress example of using the parser can be viewed here [here](https://github.com/segeljakt/pratt/tree/master/example/src/main.rs).
