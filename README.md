@@ -32,7 +32,7 @@ The full list:
 
 ```
  #  Arity (Latin) : Adicity (Greek)
-  -----------------------------------
+-------------------------------------
  0: Nullary       : Niladic
  1: Unary         : Monadic
  2: Binary        : Dyadic
@@ -130,12 +130,12 @@ x
   * a,b,c     # nilfix-nullary
 ```
 
-## Example
+# Crate
 
-The goal of this crate is to offer a declarative interface for parsing generic operators. An generic operator is defined by its name, arity, affix, and precedence. Infix operators also have associativity.
+The goal of this crate is to offer a declarative interface for parsing generic operators. An generic operator is defined by its *name*, *arity*, *affix*, and *precedence*. Infix operators also have *associativity*.
 
 ```rust
-// Op::new(<Name>, <Arity>, <Affix>, <Associativity>);
+// Op::new(<Name>, <Arity>, <Affix>, <Precedence>);
 
 pub enum Arity {
     Nullary,
