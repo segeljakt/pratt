@@ -1,5 +1,6 @@
 use {std::iter::Peekable, Affix::*, Associativity::*};
 
+#[derive(PartialEq)]
 pub enum Associativity {
     Null,
     Left,
