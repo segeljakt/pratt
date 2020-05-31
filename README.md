@@ -1,6 +1,8 @@
 <h1 align="center">pratt - A General Purpose Pratt Parser for Rust</h1>
 
-![Crates.io (latest)](https://img.shields.io/crates/dv/pratt)
+[<img alt="github" src="https://img.shields.io/badge/github-segeljakt/pratt-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/segeljakt/pratt)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/pratt.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/pratt)
+[<img alt="crates.io" src="https://img.shields.io/crates/dv/pratt?style=for-the-badge&labelColor=555555&logoColor=white&logo=rust" height="20">](https://crates.io/crates/pratt)
 
 <p align="center">
   <img src="https://github.com/segeljakt/assets/blob/master/Trees.jpg?raw=true">
