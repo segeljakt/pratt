@@ -8,7 +8,7 @@ pub enum Associativity {
 }
 
 #[derive(PartialEq, PartialOrd)]
-pub struct Precedence(pub u32);
+pub struct Precedence(pub i32);
 
 impl Precedence {
     const fn lower(mut self) -> Precedence {
@@ -20,10 +20,10 @@ impl Precedence {
         self
     }
     const fn min() -> Precedence {
-        Precedence(std::u32::MIN)
+        Precedence(std::i32::MIN)
     }
     const fn max() -> Precedence {
-        Precedence(std::u32::MAX)
+        Precedence(std::i32::MAX)
     }
 }
 
@@ -277,5 +277,97 @@ where
             Op(_, Infix(Null), _, bp, _) => bp,
         };
         Ok(nbp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::{Affix, Arity, Associativity, Op, PrattParser, Precedence};
+
+    struct BoolParser;
+
+    #[derive(Debug, PartialEq)]
+    enum BST {
+        Id(&'static str),
+        And(Box<BST>, Box<BST>),
+        Or(Box<BST>, Box<BST>),
+        Not(Box<BST>),
+    }
+    type BoolResult = Result<BST, String>;
+
+    impl<I> PrattParser<I> for BoolParser
+    where I: Iterator<Item = &'static str>,
+    {
+        type Input = &'static str;
+        type Output = BST;
+        type Error = String;
+
+        fn query(&mut self, b: &Self::Input) -> Result<Op, String> {
+            Ok(match *b {
+                "&" => Op::new("&", Affix::Infix(Associativity::Left), Arity::Binary, Precedence(1)),
+                "|" => Op::new("|", Affix::Infix(Associativity::Left), Arity::Binary, Precedence(0)),
+                "!" => Op::new("|", Affix::Prefix, Arity::Unary, Precedence(2)),
+                _ => Op::new("id", Affix::Nilfix, Arity::Nullary, Precedence::max()),
+            })
+        }
+
+        fn nullary(&mut self, b: Self::Input) -> BoolResult {
+            match b {
+                "&"|"|"|"!" => Err(format!("not an id {:?}", b)),
+                _ => Ok(BST::Id(b)),
+            }
+        }
+
+        fn unary(&mut self, op: Self::Input, b: BST) -> BoolResult {
+            match op {
+                "!" => Ok(BST::Not(Box::new(b))),
+                _ => Err(format!("not a unary operator {:?}", op)),
+            }
+        }
+
+        fn binary(&mut self, op: &'static str, a: BST, b: BST) -> BoolResult {
+            match op {
+                "&" => Ok(BST::And(Box::new(a), Box::new(b))),
+                "|" => Ok(BST::Or(Box::new(a), Box::new(b))),
+                _ => Err(format!("not a binary operator {:?}", op)),
+            }
+        }
+    }
+
+    #[test]
+    fn and_or() {
+        let mut toks = "a & b | c".split_whitespace();
+        let or = BoolParser{}.parse(&mut toks).unwrap();
+
+        if let BST::Or(a_and_b, c) = or {
+            assert_eq!(BST::Id("c"), *c);
+            if let BST::And(a, b) = *a_and_b {
+                assert_eq!(BST::Id("a"), *a);
+                assert_eq!(BST::Id("b"), *b);
+            } else {
+                panic!("expected a & b, found {:?}", a_and_b);
+            }
+        } else {
+            panic!("expected or expr, found {:?}", or);
+        }
+    }
+
+    #[test]
+    fn or_and() {
+        let mut toks = "a | b & c".split_whitespace();
+        let or = BoolParser{}.parse(&mut toks).unwrap();
+
+        if let BST::Or(a, b_and_c) = or {
+            assert_eq!(BST::Id("a"), *a);
+            if let BST::And(b, c) = *b_and_c {
+                assert_eq!(BST::Id("b"), *b);
+                assert_eq!(BST::Id("c"), *c);
+            } else {
+                panic!("expected b & c, found {:?}", b_and_c);
+            }
+        } else {
+            panic!("expected or expr, found {:?}", or);
+        }
     }
 }
