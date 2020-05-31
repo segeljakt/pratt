@@ -103,7 +103,7 @@ where
 
 fn main() {
     let tt = grammar::TokenTreeParser::new()
-        .parse("-1?+1*!-1?")
+        .parse("-1?+1-!-1?")
         .unwrap();
     let expr = ExprParser
         .parse(&mut tt.into_iter())
