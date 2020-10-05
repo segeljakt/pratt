@@ -1,6 +1,7 @@
 pub enum Associativity {
     Left,
     Right,
+    Null,
 }
 
 #[derive(PartialEq, PartialOrd)]
@@ -21,7 +22,10 @@ pub enum Affix {
 
 use std::iter::Peekable;
 
-pub trait PrattParser<Inputs> where Inputs: Iterator<Item = Self::Input>{
+pub trait PrattParser<Inputs>
+where
+    Inputs: Iterator<Item = Self::Input>,
+{
     type Error;
     type Input: std::fmt::Debug;
     type Output: Sized;
@@ -30,7 +34,12 @@ pub trait PrattParser<Inputs> where Inputs: Iterator<Item = Self::Input>{
 
     fn primary(&mut self, input: Self::Input) -> Result<Self::Output, Self::Error>;
 
-    fn infix(&mut self, lhs: Self::Output, op: Self::Input, rhs: Self::Output) -> Result<Self::Output, Self::Error>;
+    fn infix(
+        &mut self,
+        lhs: Self::Output,
+        op: Self::Input,
+        rhs: Self::Output,
+    ) -> Result<Self::Output, Self::Error>;
 
     fn prefix(&mut self, op: Self::Input, rhs: Self::Output) -> Result<Self::Output, Self::Error>;
 
@@ -40,7 +49,11 @@ pub trait PrattParser<Inputs> where Inputs: Iterator<Item = Self::Input>{
         self.parse_input(&mut inputs.peekable(), Precedence(0))
     }
 
-    fn parse_input(&mut self, inputs: &mut Peekable<&mut Inputs>, rbp: Precedence) -> Result<Self::Output, Self::Error> {
+    fn parse_input(
+        &mut self,
+        inputs: &mut Peekable<&mut Inputs>,
+        rbp: Precedence,
+    ) -> Result<Self::Output, Self::Error> {
         let mut lhs = self.nud(inputs); // Parse the prefix
         while rbp < self.lbp(inputs) {
             lhs = self.led(inputs, lhs?);
@@ -50,7 +63,9 @@ pub trait PrattParser<Inputs> where Inputs: Iterator<Item = Self::Input>{
 
     /// Null-Denotation
     fn nud(&mut self, inputs: &mut Peekable<&mut Inputs>) -> Result<Self::Output, Self::Error> {
-        let input = inputs.next().expect("Pratt parsing expects non-empty inputs");
+        let input = inputs
+            .next()
+            .expect("Pratt parsing expects non-empty inputs");
         match self.query(&input) {
             Some(Affix::Prefix(precedence)) => {
                 let rhs = self.parse_input(inputs, precedence.lower());
@@ -65,8 +80,14 @@ pub trait PrattParser<Inputs> where Inputs: Iterator<Item = Self::Input>{
     }
 
     /// Left-Denotation
-    fn led(&mut self, inputs: &mut Peekable<&mut Inputs>, lhs: Self::Output) -> Result<Self::Output, Self::Error> {
-        let input = inputs.next().expect("Pratt parsing expects non-empty inputs");
+    fn led(
+        &mut self,
+        inputs: &mut Peekable<&mut Inputs>,
+        lhs: Self::Output,
+    ) -> Result<Self::Output, Self::Error> {
+        let input = inputs
+            .next()
+            .expect("Pratt parsing expects non-empty inputs");
         match self.query(&input) {
             Some(Affix::Infix(precedence, associativity)) => {
                 let rhs = match associativity {
