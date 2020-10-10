@@ -1,4 +1,6 @@
+use std::fmt;
 use std::iter::Peekable;
+use std::result;
 
 #[derive(Copy, Clone)]
 pub enum Associativity {
@@ -33,35 +35,89 @@ impl Precedence {
 
 #[derive(Copy, Clone)]
 pub enum Affix {
+    Nilfix,
     Infix(Precedence, Associativity),
     Prefix(Precedence),
     Postfix(Precedence),
 }
 
+#[derive(Debug)]
+pub enum PrattError<I: fmt::Debug, E: fmt::Display> {
+    UserError(E),
+    EmptyInput,
+    UnexpectedNilfix(I),
+    UnexpectedPrefix(I),
+    UnexpectedInfix(I),
+    UnexpectedPostfix(I),
+}
+
+impl<I: fmt::Debug, E: fmt::Display> fmt::Display for PrattError<I, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            PrattError::UserError(e) => write!(f, "{}", e),
+            PrattError::EmptyInput => write!(f, "Pratt parser was called with empty input."),
+            PrattError::UnexpectedNilfix(t) => {
+                write!(f, "Expected Infix or Postfix, found Nilfix {:?}", t)
+            }
+            PrattError::UnexpectedPrefix(t) => {
+                write!(f, "Expected Infix or Postfix, found Prefix {:?}", t)
+            }
+            PrattError::UnexpectedInfix(t) => {
+                write!(f, "Expected Nilfix or Prefix, found Infix {:?}", t)
+            }
+            PrattError::UnexpectedPostfix(t) => {
+                write!(f, "Expected Nilfix or Prefix, found Postfix {:?}", t)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct NoError;
+
+impl fmt::Display for NoError {
+    fn fmt(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
+        Ok(())
+    }
+}
+
+pub type Result<T> = result::Result<T, NoError>;
+
 pub trait PrattParser<Inputs>
 where
     Inputs: Iterator<Item = Self::Input>,
 {
-    type Error;
-    type Input: std::fmt::Debug;
+    type Error: fmt::Display;
+    type Input: fmt::Debug;
     type Output: Sized;
 
-    fn query(&mut self, input: &Self::Input) -> Option<Affix>;
+    fn query(&mut self, input: &Self::Input) -> result::Result<Affix, Self::Error>;
 
-    fn primary(&mut self, input: Self::Input) -> Result<Self::Output, Self::Error>;
+    fn primary(&mut self, input: Self::Input) -> result::Result<Self::Output, Self::Error>;
 
     fn infix(
         &mut self,
         lhs: Self::Output,
         op: Self::Input,
         rhs: Self::Output,
-    ) -> Result<Self::Output, Self::Error>;
+    ) -> result::Result<Self::Output, Self::Error>;
 
-    fn prefix(&mut self, op: Self::Input, rhs: Self::Output) -> Result<Self::Output, Self::Error>;
+    fn prefix(
+        &mut self,
+        op: Self::Input,
+        rhs: Self::Output,
+    ) -> result::Result<Self::Output, Self::Error>;
 
-    fn postfix(&mut self, lhs: Self::Output, op: Self::Input) -> Result<Self::Output, Self::Error>;
+    fn postfix(
+        &mut self,
+        lhs: Self::Output,
+        op: Self::Input,
+    ) -> result::Result<Self::Output, Self::Error>;
 
-    fn parse(&mut self, inputs: &mut Inputs) -> Result<Self::Output, Self::Error> {
+    fn parse(
+        &mut self,
+        inputs: &mut Inputs,
+    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         self.parse_input(&mut inputs.peekable(), Precedence(0))
     }
 
@@ -69,28 +125,25 @@ where
         &mut self,
         tail: &mut Peekable<&mut Inputs>,
         rbp: Precedence,
-    ) -> Result<Self::Output, Self::Error> {
+    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         if let Some(head) = tail.next() {
-            let info = self.query(&head);
-            let mut nbp = self.nbp(info)?;
+            let info = self.query(&head).map_err(PrattError::UserError)?;
+            let mut nbp = self.nbp(info);
             let mut node = self.nud(head, tail, info);
-            loop {
-                if let Some(head) = tail.peek() {
-                    let info = self.query(head);
-                    let lbp = self.lbp(info)?;
-                    if rbp < lbp && lbp < nbp {
-                        let head = tail.next().unwrap();
-                        nbp = self.nbp(info)?;
-                        node = self.led(head, tail, info, node?);
-                    } else {
-                        break node;
-                    }
+            while let Some(head) = tail.peek() {
+                let info = self.query(head).map_err(PrattError::UserError)?;
+                let lbp = self.lbp(info);
+                if rbp < lbp && lbp < nbp {
+                    let head = tail.next().unwrap();
+                    nbp = self.nbp(info);
+                    node = self.led(head, tail, info, node?);
                 } else {
-                    break node;
+                    break;
                 }
             }
+            node
         } else {
-            panic!()
+            Err(PrattError::EmptyInput)
         }
     }
 
@@ -99,18 +152,16 @@ where
         &mut self,
         head: Self::Input,
         tail: &mut Peekable<&mut Inputs>,
-        info: Option<Affix>,
-    ) -> Result<Self::Output, Self::Error> {
+        info: Affix,
+    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         match info {
-            Some(Affix::Prefix(precedence)) => {
+            Affix::Prefix(precedence) => {
                 let rhs = self.parse_input(tail, precedence.normalize().lower());
-                self.prefix(head, rhs?)
+                self.prefix(head, rhs?).map_err(PrattError::UserError)
             }
-            None => self.primary(head),
-            _ => panic!(
-                "Expected unary-prefix or primary expression, found {:?}",
-                head
-            ),
+            Affix::Nilfix => self.primary(head).map_err(PrattError::UserError),
+            Affix::Postfix(_) => Err(PrattError::UnexpectedPostfix(head)),
+            Affix::Infix(_, _) => Err(PrattError::UnexpectedInfix(head)),
         }
     }
 
@@ -119,24 +170,22 @@ where
         &mut self,
         head: Self::Input,
         tail: &mut Peekable<&mut Inputs>,
-        info: Option<Affix>,
+        info: Affix,
         lhs: Self::Output,
-    ) -> Result<Self::Output, Self::Error> {
+    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         match info {
-            Some(Affix::Infix(precedence, associativity)) => {
+            Affix::Infix(precedence, associativity) => {
                 let precedence = precedence.normalize();
                 let rhs = match associativity {
                     Associativity::Left => self.parse_input(tail, precedence),
                     Associativity::Right => self.parse_input(tail, precedence.lower()),
                     Associativity::Neither => self.parse_input(tail, precedence.raise()),
                 };
-                self.infix(lhs, head, rhs?)
+                self.infix(lhs, head, rhs?).map_err(PrattError::UserError)
             }
-            Some(Affix::Postfix(_)) => self.postfix(lhs, head),
-            _ => panic!(
-                "Expected unary-postfix or binary-infix expression, found {:?}",
-                head
-            ),
+            Affix::Postfix(_) => self.postfix(lhs, head).map_err(PrattError::UserError),
+            Affix::Nilfix => Err(PrattError::UnexpectedNilfix(head)),
+            Affix::Prefix(_) => Err(PrattError::UnexpectedPrefix(head)),
         }
     }
 
@@ -149,26 +198,24 @@ where
     // InfixN:   bp |   bp |   bp | led
 
     /// Left-Binding-Power
-    fn lbp(&mut self, info: Option<Affix>) -> Result<Precedence, Self::Error> {
-        let lbp = match info {
-            None => panic!("Expected operator"),
-            Some(Affix::Prefix(_)) => Precedence::min(),
-            Some(Affix::Postfix(precedence)) => precedence.normalize(),
-            Some(Affix::Infix(precedence, _)) => precedence.normalize(),
-        };
-        Ok(lbp)
+    fn lbp(&mut self, info: Affix) -> Precedence {
+        match info {
+            Affix::Nilfix => Precedence::min(),
+            Affix::Prefix(_) => Precedence::min(),
+            Affix::Postfix(precedence) => precedence.normalize(),
+            Affix::Infix(precedence, _) => precedence.normalize(),
+        }
     }
 
     /// Next-Binding-Power
-    fn nbp(&mut self, info: Option<Affix>) -> Result<Precedence, Self::Error> {
-        let nbp = match info {
-            None => Precedence::max(),
-            Some(Affix::Prefix(_)) => Precedence::max(),
-            Some(Affix::Postfix(_)) => Precedence::max(),
-            Some(Affix::Infix(precedence, Associativity::Left)) => precedence.normalize().raise(),
-            Some(Affix::Infix(precedence, Associativity::Right)) => precedence.normalize().raise(),
-            Some(Affix::Infix(precedence, Associativity::Neither)) => precedence.normalize(),
-        };
-        Ok(nbp)
+    fn nbp(&mut self, info: Affix) -> Precedence {
+        match info {
+            Affix::Nilfix => Precedence::max(),
+            Affix::Prefix(_) => Precedence::max(),
+            Affix::Postfix(_) => Precedence::max(),
+            Affix::Infix(precedence, Associativity::Left) => precedence.normalize().raise(),
+            Affix::Infix(precedence, Associativity::Right) => precedence.normalize().raise(),
+            Affix::Infix(precedence, Associativity::Neither) => precedence.normalize(),
+        }
     }
 }

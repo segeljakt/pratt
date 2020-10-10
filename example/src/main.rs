@@ -1,5 +1,5 @@
 use lalrpop_util::lalrpop_mod;
-use pratt::{Affix, Associativity, PrattParser, Precedence};
+use pratt::{Affix, Associativity, PrattParser, Precedence, Result};
 
 lalrpop_mod!(pub grammar);
 
@@ -42,12 +42,12 @@ impl<I> PrattParser<I> for ExprParser
 where
     I: Iterator<Item = TokenTree>,
 {
-    type Error = ();
+    type Error = pratt::NoError;
     type Input = TokenTree;
     type Output = Expr;
 
     // Query information about an operator (Affix, Precedence, Associativity)
-    fn query(&mut self, tree: &TokenTree) -> Option<Affix> {
+    fn query(&mut self, tree: &TokenTree) -> Result<Affix> {
         let affix = match tree {
             TokenTree::Infix('=') => Affix::Infix(Precedence(2), Associativity::Neither),
             TokenTree::Infix('+') => Affix::Infix(Precedence(3), Associativity::Left),
@@ -58,22 +58,25 @@ where
             TokenTree::Prefix('-') => Affix::Prefix(Precedence(6)),
             TokenTree::Prefix('!') => Affix::Prefix(Precedence(6)),
             TokenTree::Infix('^') => Affix::Infix(Precedence(7), Associativity::Right),
-            _ => None?,
+            TokenTree::Group(_) => Affix::Nilfix,
+            TokenTree::Primary(_) => Affix::Nilfix,
+            _ => unreachable!(),
         };
-        Some(affix)
+        Ok(affix)
     }
 
     // Construct a primary expression, e.g. a number
-    fn primary(&mut self, tree: TokenTree) -> Result<Expr, ()> {
-        match tree {
-            TokenTree::Primary(num) => Ok(Expr::Int(num)),
-            TokenTree::Group(group) => self.parse(&mut group.into_iter()),
-            _ => Err(()),
-        }
+    fn primary(&mut self, tree: TokenTree) -> Result<Expr> {
+        let expr = match tree {
+            TokenTree::Primary(num) => Expr::Int(num),
+            TokenTree::Group(group) => self.parse(&mut group.into_iter()).unwrap(),
+            _ => unreachable!(),
+        };
+        Ok(expr)
     }
 
-    // Construct an binary infix expression, e.g. 1+1
-    fn infix(&mut self, lhs: Expr, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
+    // Construct a binary infix expression, e.g. 1+1
+    fn infix(&mut self, lhs: Expr, tree: TokenTree, rhs: Expr) -> Result<Expr> {
         let op = match tree {
             TokenTree::Infix('+') => BinOpKind::Add,
             TokenTree::Infix('-') => BinOpKind::Sub,
@@ -81,26 +84,26 @@ where
             TokenTree::Infix('/') => BinOpKind::Div,
             TokenTree::Infix('^') => BinOpKind::Pow,
             TokenTree::Infix('=') => BinOpKind::Eq,
-            _ => Err(())?,
+            _ => unreachable!(),
         };
         Ok(Expr::BinOp(Box::new(lhs), op, Box::new(rhs)))
     }
 
-    // Construct an unary prefix expression, e.g. !1
-    fn prefix(&mut self, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
+    // Construct a unary prefix expression, e.g. !1
+    fn prefix(&mut self, tree: TokenTree, rhs: Expr) -> Result<Expr> {
         let op = match tree {
             TokenTree::Prefix('!') => UnOpKind::Not,
             TokenTree::Prefix('-') => UnOpKind::Neg,
-            _ => Err(())?,
+            _ => unreachable!(),
         };
         Ok(Expr::UnOp(op, Box::new(rhs)))
     }
 
-    // Construct an unary postfix expression, e.g. 1?
-    fn postfix(&mut self, lhs: Expr, tree: TokenTree) -> Result<Expr, ()> {
+    // Construct a unary postfix expression, e.g. 1?
+    fn postfix(&mut self, lhs: Expr, tree: TokenTree) -> Result<Expr> {
         let op = match tree {
             TokenTree::Postfix('?') => UnOpKind::Try,
-            _ => Err(())?,
+            _ => unreachable!(),
         };
         Ok(Expr::UnOp(op, Box::new(lhs)))
     }
@@ -111,8 +114,10 @@ fn main() {
     let _ = args.next();
     let input = args.next().expect("Expected input string");
     println!("Code: {}", input);
+
     let tt = grammar::TokenTreeParser::new().parse(&input).unwrap();
     println!("TokenTree: {:?}", tt);
+
     let expr = ExprParser.parse(&mut tt.into_iter()).unwrap();
     println!("Expression: {:?}", expr);
 }
