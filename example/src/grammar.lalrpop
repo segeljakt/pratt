@@ -28,6 +28,8 @@ Infix: TokenTree = {
     "-" => TokenTree::Infix('-'),
     "*" => TokenTree::Infix('*'),
     "/" => TokenTree::Infix('/'),
+    "=" => TokenTree::Infix('='),
+    "^" => TokenTree::Infix('^'),
 }
 
 Prefix: TokenTree = {
