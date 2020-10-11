@@ -17,7 +17,7 @@ In other words, you can use a Pratt parser to parse trees of expressions that mi
 
 ## Example
 
-Assume we have a strange language which should parse strings such as `-1?+1*!-1?` into `(((((-(1))?)+(1))*(!(-(1))))?)`.
+Assume we want to parse an expression `!1?*-3+3/!2^4?-1` into `(((((!(1))?)*(-(3)))+((3)/((!((2)^(4)))?)))-(1))`.
 
 Our strategy is to implement a parser which parses source code into token trees, and then token-trees into an expression tree. The full implementation can be viewed [here](https://github.com/segeljakt/pratt/tree/master/example).
 
@@ -35,18 +35,19 @@ pub enum TokenTree {
 // To this
 #[derive(Debug)]
 pub enum Expr {
-    BinOp(Box<Expr>, BinOp, Box<Expr>),
-    UnOp(UnOp, Box<Expr>),
+    BinOp(Box<Expr>, BinOpKind, Box<Expr>),
+    UnOp(UnOpKind, Box<Expr>),
     Int(i32),
-    Unknown(String),
 }
 
 #[derive(Debug)]
-pub enum BinOp {
+pub enum BinOpKind {
     Add, // +
     Sub, // -
     Mul, // *
     Div, // /
+    Pow, // ^
+    Eq,  // =
 }
 
 #[derive(Debug)]
@@ -70,7 +71,7 @@ grammar;
 pub TokenTree = Group;
 
 Group: Vec<TokenTree> = <prefix:Prefix*> <primary:Primary> <mut postfix:Postfix*>
-                        <rest:(Infix Prefix* Primary Postfix*)*> => {
+                   <rest:(Infix Prefix* Primary Postfix*)*> => {
     let mut group = prefix;
     group.push(primary);
     group.append(&mut postfix);
@@ -93,6 +94,8 @@ Infix: TokenTree = {
     "-" => TokenTree::Infix('-'),
     "*" => TokenTree::Infix('*'),
     "/" => TokenTree::Infix('/'),
+    "=" => TokenTree::Infix('='),
+    "^" => TokenTree::Infix('^'),
 }
 
 Prefix: TokenTree = {
@@ -111,7 +114,7 @@ Postfix: TokenTree = {
 Then, for the Pratt parser, we define a `struct ExprParser` and implement `pratt::ExprParser` for it.
 
 ```rust
-use pratt::{Associativity, Affix, ExprParser, Precedence};
+use pratt::{Affix, Associativity, PrattParser, Precedence, Result};
 
 struct ExprParser;
 
@@ -119,61 +122,68 @@ impl<I> PrattParser<I> for ExprParser
 where
     I: Iterator<Item = TokenTree>,
 {
-    type Error = ();
+    type Error = pratt::NoError;
     type Input = TokenTree;
     type Output = Expr;
 
     // Query information about an operator (Affix, Precedence, Associativity)
-    fn query(&mut self, tree: &TokenTree) -> Option<Affix> {
+    fn query(&mut self, tree: &TokenTree) -> Result<Affix> {
         let affix = match tree {
-            TokenTree::Postfix('?') => Affix::Postfix(Precedence(1)),
-            TokenTree::Infix('+') => Affix::Infix(Precedence(2), Associativity::Left),
-            TokenTree::Infix('-') => Affix::Infix(Precedence(2), Associativity::Left),
-            TokenTree::Infix('*') => Affix::Infix(Precedence(2), Associativity::Right),
-            TokenTree::Infix('/') => Affix::Infix(Precedence(2), Associativity::Right),
-            TokenTree::Prefix('-') => Affix::Prefix(Precedence(3)),
-            TokenTree::Prefix('!') => Affix::Prefix(Precedence(3)),
-            _ => None?,
+            TokenTree::Infix('=') => Affix::Infix(Precedence(2), Associativity::Neither),
+            TokenTree::Infix('+') => Affix::Infix(Precedence(3), Associativity::Left),
+            TokenTree::Infix('-') => Affix::Infix(Precedence(3), Associativity::Left),
+            TokenTree::Infix('*') => Affix::Infix(Precedence(4), Associativity::Left),
+            TokenTree::Infix('/') => Affix::Infix(Precedence(4), Associativity::Left),
+            TokenTree::Postfix('?') => Affix::Postfix(Precedence(5)),
+            TokenTree::Prefix('-') => Affix::Prefix(Precedence(6)),
+            TokenTree::Prefix('!') => Affix::Prefix(Precedence(6)),
+            TokenTree::Infix('^') => Affix::Infix(Precedence(7), Associativity::Right),
+            TokenTree::Group(_) => Affix::Nilfix,
+            TokenTree::Primary(_) => Affix::Nilfix,
+            _ => unreachable!(),
         };
-        Some(affix)
+        Ok(affix)
     }
 
     // Construct a primary expression, e.g. a number
-    fn primary(&mut self, tree: TokenTree) -> Result<Expr, ()> {
-        match tree {
-            TokenTree::Primary(num) => Ok(Expr::Int(num)),
-            TokenTree::Group(group) => self.parse(&mut group.into_iter()),
-            _ => Err(()),
-        }
+    fn primary(&mut self, tree: TokenTree) -> Result<Expr> {
+        let expr = match tree {
+            TokenTree::Primary(num) => Expr::Int(num),
+            TokenTree::Group(group) => self.parse(&mut group.into_iter()).unwrap(),
+            _ => unreachable!(),
+        };
+        Ok(expr)
     }
 
-    // Construct an binary infix expression, e.g. 1+1
-    fn infix(&mut self, lhs: Expr, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
+    // Construct a binary infix expression, e.g. 1+1
+    fn infix(&mut self, lhs: Expr, tree: TokenTree, rhs: Expr) -> Result<Expr> {
         let op = match tree {
-            TokenTree::Infix('+') => BinOp::Add,
-            TokenTree::Infix('-') => BinOp::Sub,
-            TokenTree::Infix('*') => BinOp::Mul,
-            TokenTree::Infix('/') => BinOp::Div,
-            _ => Err(())?,
+            TokenTree::Infix('+') => BinOpKind::Add,
+            TokenTree::Infix('-') => BinOpKind::Sub,
+            TokenTree::Infix('*') => BinOpKind::Mul,
+            TokenTree::Infix('/') => BinOpKind::Div,
+            TokenTree::Infix('^') => BinOpKind::Pow,
+            TokenTree::Infix('=') => BinOpKind::Eq,
+            _ => unreachable!(),
         };
         Ok(Expr::BinOp(Box::new(lhs), op, Box::new(rhs)))
     }
 
-    // Construct an unary prefix expression, e.g. !1
-    fn prefix(&mut self, tree: TokenTree, rhs: Expr) -> Result<Expr, ()> {
+    // Construct a unary prefix expression, e.g. !1
+    fn prefix(&mut self, tree: TokenTree, rhs: Expr) -> Result<Expr> {
         let op = match tree {
-            TokenTree::Prefix('!') => UnOp::Not,
-            TokenTree::Prefix('-') => UnOp::Neg,
-            _ => Err(())?,
+            TokenTree::Prefix('!') => UnOpKind::Not,
+            TokenTree::Prefix('-') => UnOpKind::Neg,
+            _ => unreachable!(),
         };
         Ok(Expr::UnOp(op, Box::new(rhs)))
     }
 
-    // Construct an unary postfix expression, e.g. 1?
-    fn postfix(&mut self, lhs: Expr, tree: TokenTree) -> Result<Expr, ()> {
+    // Construct a unary postfix expression, e.g. 1?
+    fn postfix(&mut self, lhs: Expr, tree: TokenTree) -> Result<Expr> {
         let op = match tree {
-            TokenTree::Postfix('?') => UnOp::Try,
-            _ => Err(())?,
+            TokenTree::Postfix('?') => UnOpKind::Try,
+            _ => unreachable!(),
         };
         Ok(Expr::UnOp(op, Box::new(lhs)))
     }
@@ -186,47 +196,97 @@ To run the parser:
 
 ```rust
 fn main() {
-    let tt = grammar::TokenTreeParser::new()
-        .parse("-1?+1-!-1?")
-        .unwrap();
-    let expr = ExprParser
-        .parse(&mut tt.into_iter())
-        .unwrap();
-    println!("{:#?}", expr);
+    let mut args = std::env::args();
+    let _ = args.next();
+
+    let input = args.next().expect("Expected input string");
+    println!("Code: {}", input);
+
+    let tt = grammar::TokenTreeParser::new().parse(&input).unwrap();
+    println!("TokenTree: {:?}", tt);
+
+    let expr = ExprParser.parse(&mut tt.into_iter()).unwrap();
+    println!("Expression: {:?}", expr);
 }
 ```
 
-Output:
+Plus some tests:
 
 ```rust
-UnOp(
-    Try,
-    BinOp(
-        BinOp(
-            UnOp(
-                Try,
-                UnOp(
-                    Neg,
-                    Int(
-                        1,
-                    ),
-                ),
-            ),
-            Add,
-            Int(
-                1,
-            ),
-        ),
-        Sub,
-        UnOp(
-            Not,
-            UnOp(
-                Neg,
-                Int(
-                    1,
-                ),
-            ),
-        ),
-    ),
-)
+#[cfg(test)]
+mod test {
+    fn parse(input: &str) -> Expr {
+        let tt = grammar::TokenTreeParser::new()
+            .parse(input)
+            .unwrap()
+            .into_iter();
+        ExprParser.parse(&mut tt.into_iter()).unwrap()
+    }
+    use super::BinOpKind::*;
+    use super::Expr::*;
+    use super::UnOpKind::*;
+    use super::*;
+
+    #[test]
+    fn test1() {
+        assert_eq!(
+            parse("1=2=3"),
+            BinOp(Box::new(Int(1)), Eq, Box::new(Int(2)))
+        );
+    }
+
+    #[test]
+    fn test2() {
+        assert_eq!(
+            parse("1*2+3"),
+            BinOp(
+                Box::new(BinOp(Box::new(Int(1)), Mul, Box::new(Int(2)))),
+                Add,
+                Box::new(Int(3))
+            )
+        );
+    }
+
+    #[test]
+    fn test3() {
+        assert_eq!(
+            parse("1*!2^3"),
+            BinOp(
+                Box::new(Int(1)),
+                Mul,
+                Box::new(UnOp(
+                    Not,
+                    Box::new(BinOp(Box::new(Int(2)), Pow, Box::new(Int(3))))
+                ))
+            )
+        );
+    }
+
+    #[test]
+    fn test4() {
+        assert_eq!(
+            parse("-1?*!2^3+3/2?-1"),
+            BinOp(
+                Box::new(BinOp(
+                    Box::new(BinOp(
+                        Box::new(UnOp(Try, Box::new(UnOp(Neg, Box::new(Int(1)))))),
+                        Mul,
+                        Box::new(UnOp(
+                            Not,
+                            Box::new(BinOp(Box::new(Int(2)), Pow, Box::new(Int(3))))
+                        ))
+                    )),
+                    Add,
+                    Box::new(BinOp(
+                        Box::new(Int(3)),
+                        Div,
+                        Box::new(UnOp(Try, Box::new(Int(2))))
+                    ))
+                )),
+                Sub,
+                Box::new(Int(1))
+            )
+        );
+    }
+}
 ```

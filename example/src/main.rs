@@ -112,6 +112,7 @@ where
 fn main() {
     let mut args = std::env::args();
     let _ = args.next();
+
     let input = args.next().expect("Expected input string");
     println!("Code: {}", input);
 
