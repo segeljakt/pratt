@@ -88,30 +88,33 @@ where
     Inputs: Iterator<Item = Self::Input>,
 {
     type Error: fmt::Display;
-    type Input: fmt::Debug;
+    type Input: fmt::Debug + Clone;
     type Output: Sized;
 
-    fn query(&mut self, input: &Self::Input) -> result::Result<Affix, Self::Error>;
+    fn query(&mut self, input: &Self::Input, rest: &mut Peekable<&mut Inputs>) -> result::Result<Affix, Self::Error>;
 
-    fn primary(&mut self, input: Self::Input) -> result::Result<Self::Output, Self::Error>;
+    fn primary(&mut self, input: Self::Input, rest: &mut Peekable<&mut Inputs>) -> result::Result<Self::Output, Self::Error>;
 
     fn infix(
         &mut self,
         lhs: Self::Output,
         op: Self::Input,
         rhs: Self::Output,
+        rest: &mut Peekable<&mut Inputs>
     ) -> result::Result<Self::Output, Self::Error>;
 
     fn prefix(
         &mut self,
         op: Self::Input,
         rhs: Self::Output,
+        rest: &mut Peekable<&mut Inputs>
     ) -> result::Result<Self::Output, Self::Error>;
 
     fn postfix(
         &mut self,
         lhs: Self::Output,
         op: Self::Input,
+        rest: &mut Peekable<&mut Inputs>
     ) -> result::Result<Self::Output, Self::Error>;
 
     fn parse(
@@ -126,12 +129,12 @@ where
         tail: &mut Peekable<&mut Inputs>,
         rbp: Precedence,
     ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
-        if let Some(head) = tail.next() {
-            let info = self.query(&head).map_err(PrattError::UserError)?;
+        if let Some(head) = tail.next().clone() {
+            let info = self.query(&head, tail).map_err(PrattError::UserError)?;
             let mut nbp = self.nbp(info);
             let mut node = self.nud(head, tail, info);
-            while let Some(head) = tail.peek() {
-                let info = self.query(head).map_err(PrattError::UserError)?;
+            while let Some(head) = tail.peek().map(|x| x.clone()) {
+                let info = self.query(&head, tail).map_err(PrattError::UserError)?;
                 let lbp = self.lbp(info);
                 if rbp < lbp && lbp < nbp {
                     let head = tail.next().unwrap();
@@ -157,9 +160,9 @@ where
         match info {
             Affix::Prefix(precedence) => {
                 let rhs = self.parse_input(tail, precedence.normalize().lower());
-                self.prefix(head, rhs?).map_err(PrattError::UserError)
+                self.prefix(head, rhs?, tail).map_err(PrattError::UserError)
             }
-            Affix::Nilfix => self.primary(head).map_err(PrattError::UserError),
+            Affix::Nilfix => self.primary(head, tail).map_err(PrattError::UserError),
             Affix::Postfix(_) => Err(PrattError::UnexpectedPostfix(head)),
             Affix::Infix(_, _) => Err(PrattError::UnexpectedInfix(head)),
         }
@@ -181,9 +184,9 @@ where
                     Associativity::Right => self.parse_input(tail, precedence.lower()),
                     Associativity::Neither => self.parse_input(tail, precedence.raise()),
                 };
-                self.infix(lhs, head, rhs?).map_err(PrattError::UserError)
+                self.infix(lhs, head, rhs?, tail).map_err(PrattError::UserError)
             }
-            Affix::Postfix(_) => self.postfix(lhs, head).map_err(PrattError::UserError),
+            Affix::Postfix(_) => self.postfix(lhs, head, tail).map_err(PrattError::UserError),
             Affix::Nilfix => Err(PrattError::UnexpectedNilfix(head)),
             Affix::Prefix(_) => Err(PrattError::UnexpectedPrefix(head)),
         }
