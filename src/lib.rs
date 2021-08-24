@@ -117,11 +117,8 @@ where
         op: Self::Input,
     ) -> result::Result<Self::Output, Self::Error>;
 
-    fn parse(
-        &mut self,
-        inputs: &mut Inputs,
-    ) -> result::Result<Self::Output, Self::Error> {
-        self.parse_input(&mut inputs.peekable(), Precedence(0))
+    fn parse(&mut self, inputs: &mut Inputs) -> result::Result<Self::Output, Self::Error> {
+        self.parse_input(&mut inputs.peekable(), Precedence::MIN)
     }
 
     fn parse_input(
@@ -159,8 +156,8 @@ where
     ) -> result::Result<Self::Output, Self::Error> {
         match info {
             Affix::Prefix(precedence) => {
-                let rhs = self.parse_input(tail, precedence.normalize().lower());
-                self.prefix(head, rhs?)
+                let rhs = self.parse_input(tail, precedence.normalize().lower())?;
+                self.prefix(head, rhs)
             }
             Affix::Nilfix => self.primary(head),
             Affix::Postfix(_) => Err(PrattError::UnexpectedPostfix(head).into()),
@@ -176,15 +173,16 @@ where
         info: Affix,
         lhs: Self::Output,
     ) -> result::Result<Self::Output, Self::Error> {
+        use Associativity::*;
         match info {
             Affix::Infix(precedence, associativity) => {
-                let precedence = precedence.normalize();
-                let rhs = match associativity {
-                    Associativity::Left => self.parse_input(tail, precedence),
-                    Associativity::Right => self.parse_input(tail, precedence.lower()),
-                    Associativity::Neither => self.parse_input(tail, precedence.raise()),
+                let precedence = match associativity {
+                    Left => precedence.normalize(),
+                    Right => precedence.normalize().lower(),
+                    Neither => precedence.normalize().raise(),
                 };
-                self.infix(lhs, head, rhs?)
+                let rhs = self.parse_input(tail, precedence)?;
+                self.infix(lhs, head, rhs)
             }
             Affix::Postfix(_) => self.postfix(lhs, head),
             Affix::Nilfix => Err(PrattError::UnexpectedNilfix(head).into()),
@@ -212,13 +210,11 @@ where
 
     /// Next-Binding-Power
     fn nbp(&mut self, info: Affix) -> Precedence {
+        use Associativity::*;
         match info {
-            Affix::Nilfix => Precedence::MAX,
-            Affix::Prefix(_) => Precedence::MAX,
-            Affix::Postfix(_) => Precedence::MAX,
-            Affix::Infix(precedence, Associativity::Left) => precedence.normalize().raise(),
-            Affix::Infix(precedence, Associativity::Right) => precedence.normalize().raise(),
-            Affix::Infix(precedence, Associativity::Neither) => precedence.normalize(),
+            Affix::Nilfix | Affix::Prefix(_) | Affix::Postfix(_) => Precedence::MAX,
+            Affix::Infix(precedence, Left | Right) => precedence.normalize().raise(),
+            Affix::Infix(precedence, Neither) => precedence.normalize(),
         }
     }
 }
