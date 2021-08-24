@@ -13,6 +13,9 @@ pub enum Associativity {
 pub struct Precedence(pub u32);
 
 impl Precedence {
+    const MIN: Precedence = Precedence(u32::MIN);
+    const MAX: Precedence = Precedence(u32::MAX);
+
     const fn raise(mut self) -> Precedence {
         self.0 += 1;
         self
@@ -25,9 +28,11 @@ impl Precedence {
         self.0 *= 10;
         self
     }
+    #[deprecated = "replaced by the `MIN` associated constant on this type"]
     const fn min() -> Precedence {
         Precedence(std::u32::MIN)
     }
+    #[deprecated = "replaced by the `MAX` associated constant on this type"]
     const fn max() -> Precedence {
         Precedence(std::u32::MAX)
     }
@@ -200,8 +205,8 @@ where
     /// Left-Binding-Power
     fn lbp(&mut self, info: Affix) -> Precedence {
         match info {
-            Affix::Nilfix => Precedence::min(),
-            Affix::Prefix(_) => Precedence::min(),
+            Affix::Nilfix => Precedence::MIN,
+            Affix::Prefix(_) => Precedence::MIN,
             Affix::Postfix(precedence) => precedence.normalize(),
             Affix::Infix(precedence, _) => precedence.normalize(),
         }
@@ -210,9 +215,9 @@ where
     /// Next-Binding-Power
     fn nbp(&mut self, info: Affix) -> Precedence {
         match info {
-            Affix::Nilfix => Precedence::max(),
-            Affix::Prefix(_) => Precedence::max(),
-            Affix::Postfix(_) => Precedence::max(),
+            Affix::Nilfix => Precedence::MAX,
+            Affix::Prefix(_) => Precedence::MAX,
+            Affix::Postfix(_) => Precedence::MAX,
             Affix::Infix(precedence, Associativity::Left) => precedence.normalize().raise(),
             Affix::Infix(precedence, Associativity::Right) => precedence.normalize().raise(),
             Affix::Infix(precedence, Associativity::Neither) => precedence.normalize(),
