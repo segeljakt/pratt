@@ -28,10 +28,14 @@ impl Precedence {
         self.0 *= 10;
         self
     }
+
+    #[allow(dead_code)]
     #[deprecated = "replaced by the `MIN` associated constant on this type"]
     const fn min() -> Precedence {
         Precedence(std::u32::MIN)
     }
+
+    #[allow(dead_code)]
     #[deprecated = "replaced by the `MAX` associated constant on this type"]
     const fn max() -> Precedence {
         Precedence(std::u32::MAX)
