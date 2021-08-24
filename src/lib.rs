@@ -47,8 +47,7 @@ pub enum Affix {
 }
 
 #[derive(Debug)]
-pub enum PrattError<I: fmt::Debug, E: fmt::Display> {
-    UserError(E),
+pub enum PrattError<I: fmt::Debug> {
     EmptyInput,
     UnexpectedNilfix(I),
     UnexpectedPrefix(I),
@@ -56,10 +55,9 @@ pub enum PrattError<I: fmt::Debug, E: fmt::Display> {
     UnexpectedPostfix(I),
 }
 
-impl<I: fmt::Debug, E: fmt::Display> fmt::Display for PrattError<I, E> {
+impl<I: fmt::Debug> fmt::Display for PrattError<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            PrattError::UserError(e) => write!(f, "{}", e),
             PrattError::EmptyInput => write!(f, "Pratt parser was called with empty input."),
             PrattError::UnexpectedNilfix(t) => {
                 write!(f, "Expected Infix or Postfix, found Nilfix {:?}", t)
@@ -92,7 +90,7 @@ pub trait PrattParser<Inputs>
 where
     Inputs: Iterator<Item = Self::Input>,
 {
-    type Error: fmt::Display;
+    type Error: From<PrattError<Self::Input>>;
     type Input: fmt::Debug;
     type Output: Sized;
 
@@ -122,7 +120,7 @@ where
     fn parse(
         &mut self,
         inputs: &mut Inputs,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+    ) -> result::Result<Self::Output, Self::Error> {
         self.parse_input(&mut inputs.peekable(), Precedence(0))
     }
 
@@ -130,13 +128,13 @@ where
         &mut self,
         tail: &mut Peekable<&mut Inputs>,
         rbp: Precedence,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+    ) -> result::Result<Self::Output, Self::Error> {
         if let Some(head) = tail.next() {
-            let info = self.query(&head).map_err(PrattError::UserError)?;
+            let info = self.query(&head)?;
             let mut nbp = self.nbp(info);
             let mut node = self.nud(head, tail, info);
             while let Some(head) = tail.peek() {
-                let info = self.query(head).map_err(PrattError::UserError)?;
+                let info = self.query(head)?;
                 let lbp = self.lbp(info);
                 if rbp < lbp && lbp < nbp {
                     let head = tail.next().unwrap();
@@ -148,7 +146,7 @@ where
             }
             node
         } else {
-            Err(PrattError::EmptyInput)
+            Err(PrattError::EmptyInput.into())
         }
     }
 
@@ -158,15 +156,15 @@ where
         head: Self::Input,
         tail: &mut Peekable<&mut Inputs>,
         info: Affix,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+    ) -> result::Result<Self::Output, Self::Error> {
         match info {
             Affix::Prefix(precedence) => {
                 let rhs = self.parse_input(tail, precedence.normalize().lower());
-                self.prefix(head, rhs?).map_err(PrattError::UserError)
+                self.prefix(head, rhs?)
             }
-            Affix::Nilfix => self.primary(head).map_err(PrattError::UserError),
-            Affix::Postfix(_) => Err(PrattError::UnexpectedPostfix(head)),
-            Affix::Infix(_, _) => Err(PrattError::UnexpectedInfix(head)),
+            Affix::Nilfix => self.primary(head),
+            Affix::Postfix(_) => Err(PrattError::UnexpectedPostfix(head).into()),
+            Affix::Infix(_, _) => Err(PrattError::UnexpectedInfix(head).into()),
         }
     }
 
@@ -177,7 +175,7 @@ where
         tail: &mut Peekable<&mut Inputs>,
         info: Affix,
         lhs: Self::Output,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+    ) -> result::Result<Self::Output, Self::Error> {
         match info {
             Affix::Infix(precedence, associativity) => {
                 let precedence = precedence.normalize();
@@ -186,11 +184,11 @@ where
                     Associativity::Right => self.parse_input(tail, precedence.lower()),
                     Associativity::Neither => self.parse_input(tail, precedence.raise()),
                 };
-                self.infix(lhs, head, rhs?).map_err(PrattError::UserError)
+                self.infix(lhs, head, rhs?)
             }
-            Affix::Postfix(_) => self.postfix(lhs, head).map_err(PrattError::UserError),
-            Affix::Nilfix => Err(PrattError::UnexpectedNilfix(head)),
-            Affix::Prefix(_) => Err(PrattError::UnexpectedPrefix(head)),
+            Affix::Postfix(_) => self.postfix(lhs, head),
+            Affix::Nilfix => Err(PrattError::UnexpectedNilfix(head).into()),
+            Affix::Prefix(_) => Err(PrattError::UnexpectedPrefix(head).into()),
         }
     }
 
