@@ -79,17 +79,6 @@ impl<I: fmt::Debug> fmt::Display for PrattError<I> {
     }
 }
 
-#[derive(Debug)]
-pub struct NoError;
-
-impl fmt::Display for NoError {
-    fn fmt(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
-        Ok(())
-    }
-}
-
-pub type Result<T> = result::Result<T, NoError>;
-
 pub trait PrattParser<Inputs>
 where
     Inputs: Iterator<Item = Self::Input>,
