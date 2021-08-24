@@ -1,6 +1,5 @@
 use std::fmt;
 use std::iter::Peekable;
-use std::result;
 
 #[derive(Copy, Clone)]
 pub enum Associativity {
@@ -60,7 +59,7 @@ pub enum PrattError<I: fmt::Debug> {
 }
 
 impl<I: fmt::Debug> fmt::Display for PrattError<I> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             PrattError::EmptyInput => write!(f, "Pratt parser was called with empty input."),
             PrattError::UnexpectedNilfix(t) => {
@@ -87,30 +86,22 @@ where
     type Input: fmt::Debug;
     type Output: Sized;
 
-    fn query(&mut self, input: &Self::Input) -> result::Result<Affix, Self::Error>;
+    fn query(&mut self, input: &Self::Input) -> Result<Affix, Self::Error>;
 
-    fn primary(&mut self, input: Self::Input) -> result::Result<Self::Output, Self::Error>;
+    fn primary(&mut self, input: Self::Input) -> Result<Self::Output, Self::Error>;
 
     fn infix(
         &mut self,
         lhs: Self::Output,
         op: Self::Input,
         rhs: Self::Output,
-    ) -> result::Result<Self::Output, Self::Error>;
+    ) -> Result<Self::Output, Self::Error>;
 
-    fn prefix(
-        &mut self,
-        op: Self::Input,
-        rhs: Self::Output,
-    ) -> result::Result<Self::Output, Self::Error>;
+    fn prefix(&mut self, op: Self::Input, rhs: Self::Output) -> Result<Self::Output, Self::Error>;
 
-    fn postfix(
-        &mut self,
-        lhs: Self::Output,
-        op: Self::Input,
-    ) -> result::Result<Self::Output, Self::Error>;
+    fn postfix(&mut self, lhs: Self::Output, op: Self::Input) -> Result<Self::Output, Self::Error>;
 
-    fn parse(&mut self, inputs: &mut Inputs) -> result::Result<Self::Output, Self::Error> {
+    fn parse(&mut self, inputs: &mut Inputs) -> Result<Self::Output, Self::Error> {
         self.parse_input(&mut inputs.peekable(), Precedence::MIN)
     }
 
@@ -118,7 +109,7 @@ where
         &mut self,
         tail: &mut Peekable<&mut Inputs>,
         rbp: Precedence,
-    ) -> result::Result<Self::Output, Self::Error> {
+    ) -> Result<Self::Output, Self::Error> {
         if let Some(head) = tail.next() {
             let info = self.query(&head)?;
             let mut nbp = self.nbp(info);
@@ -146,7 +137,7 @@ where
         head: Self::Input,
         tail: &mut Peekable<&mut Inputs>,
         info: Affix,
-    ) -> result::Result<Self::Output, Self::Error> {
+    ) -> Result<Self::Output, Self::Error> {
         match info {
             Affix::Prefix(precedence) => {
                 let rhs = self.parse_input(tail, precedence.normalize().lower())?;
@@ -165,7 +156,7 @@ where
         tail: &mut Peekable<&mut Inputs>,
         info: Affix,
         lhs: Self::Output,
-    ) -> result::Result<Self::Output, Self::Error> {
+    ) -> Result<Self::Output, Self::Error> {
         use Associativity::*;
         match info {
             Affix::Infix(precedence, associativity) => {
