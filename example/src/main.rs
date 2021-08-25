@@ -1,5 +1,6 @@
 use lalrpop_util::lalrpop_mod;
 use pratt::{Affix, Associativity, PrattError, PrattParser, Precedence};
+use std::iter::Peekable;
 
 lalrpop_mod!(pub grammar);
 
@@ -36,19 +37,26 @@ pub enum TokenTree {
     Group(Vec<TokenTree>),
 }
 
-struct ExprParser;
+struct ExprParser<I>(Peekable<I>) where I: Iterator<Item=TokenTree>;
 
-impl<I> PrattParser<I> for ExprParser
-where
-    I: Iterator<Item = TokenTree>,
+impl<I: Iterator<Item=TokenTree>> PrattParser for ExprParser<I>
 {
     type Error = PrattError<Self::Input>;
     type Input = TokenTree;
     type Output = Expr;
 
+    fn next(&mut self) -> Option<Self::Input> {
+        self.0.next()
+    }
+
+    fn peek(&mut self) -> Option<&Self::Input> {
+        self.0.peek()
+    }
+
     // Query information about an operator (Affix, Precedence, Associativity)
-    fn query(&mut self, tree: &TokenTree) -> Result<Affix, Self::Error> {
-        let affix = match tree {
+    fn query(&mut self) -> Result<Affix, Self::Error> {
+        let peeked = self.peek().ok_or_else(|| PrattError::EmptyInput.into())?;
+        let affix = match peeked {
             TokenTree::Infix('=') => Affix::Infix(Precedence(2), Associativity::Neither),
             TokenTree::Infix('+') => Affix::Infix(Precedence(3), Associativity::Left),
             TokenTree::Infix('-') => Affix::Infix(Precedence(3), Associativity::Left),
@@ -69,7 +77,7 @@ where
     fn primary(&mut self, tree: TokenTree) -> Result<Expr, Self::Error> {
         let expr = match tree {
             TokenTree::Primary(num) => Expr::Int(num),
-            TokenTree::Group(group) => self.parse(&mut group.into_iter())?,
+            TokenTree::Group(group) => ExprParser(group.into_iter().peekable()).parse()?,
             _ => unreachable!(),
         };
         Ok(expr)
@@ -119,7 +127,7 @@ fn main() {
     let tt = grammar::TokenTreeParser::new().parse(&input).unwrap();
     println!("TokenTree: {:?}", tt);
 
-    let expr = ExprParser.parse(&mut tt.into_iter()).unwrap();
+    let expr = ExprParser(tt.into_iter().peekable()).parse().unwrap();
     println!("Expression: {:?}", expr);
 }
 
@@ -130,7 +138,7 @@ mod test {
             .parse(input)
             .unwrap()
             .into_iter();
-        ExprParser.parse(&mut tt.into_iter()).unwrap()
+        ExprParser(tt.peekable()).parse().unwrap()
     }
     use super::BinOpKind::*;
     use super::Expr::*;
