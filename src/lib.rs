@@ -1,5 +1,4 @@
 use std::fmt;
-use std::iter::Peekable;
 
 #[derive(Copy, Clone)]
 pub enum Associativity {
@@ -78,15 +77,16 @@ impl<I: fmt::Debug> fmt::Display for PrattError<I> {
     }
 }
 
-pub trait PrattParser<Inputs>
-where
-    Inputs: Iterator<Item = Self::Input>,
-{
+pub trait PrattParser {
     type Error: From<PrattError<Self::Input>>;
     type Input: fmt::Debug;
     type Output: Sized;
 
-    fn query(&mut self, input: &Self::Input) -> Result<Affix, Self::Error>;
+    fn next(&mut self) -> Option<Self::Input>;
+
+    fn peek(&mut self) -> Option<&Self::Input>;
+
+    fn query(&mut self) -> Result<Affix, Self::Error>;
 
     fn primary(&mut self, input: Self::Input) -> Result<Self::Output, Self::Error>;
 
@@ -101,46 +101,34 @@ where
 
     fn postfix(&mut self, lhs: Self::Output, op: Self::Input) -> Result<Self::Output, Self::Error>;
 
-    fn parse(&mut self, inputs: &mut Inputs) -> Result<Self::Output, Self::Error> {
-        self.parse_input(&mut inputs.peekable(), Precedence::MIN)
+    fn parse(&mut self) -> Result<Self::Output, Self::Error> {
+        self.parse_input(Precedence::MIN)
     }
 
-    fn parse_input(
-        &mut self,
-        tail: &mut Peekable<&mut Inputs>,
-        rbp: Precedence,
-    ) -> Result<Self::Output, Self::Error> {
-        if let Some(head) = tail.next() {
-            let info = self.query(&head)?;
-            let mut nbp = self.nbp(info);
-            let mut node = self.nud(head, tail, info);
-            while let Some(head) = tail.peek() {
-                let info = self.query(head)?;
-                let lbp = self.lbp(info);
-                if rbp < lbp && lbp < nbp {
-                    let head = tail.next().unwrap();
-                    nbp = self.nbp(info);
-                    node = self.led(head, tail, info, node?);
-                } else {
-                    break;
-                }
+    fn parse_input(&mut self, rbp: Precedence) -> Result<Self::Output, Self::Error> {
+        let info = self.query()?;
+        let head = self.next().ok_or(PrattError::EmptyInput)?;
+        let mut nbp = self.nbp(info);
+        let mut node = self.nud(head, info);
+        while self.peek().is_some() {
+            let info = self.query()?;
+            let lbp = self.lbp(info);
+            if rbp < lbp && lbp < nbp {
+                let head = self.next().unwrap();
+                nbp = self.nbp(info);
+                node = self.led(head, info, node?);
+            } else {
+                break;
             }
-            node
-        } else {
-            Err(PrattError::EmptyInput.into())
         }
+        node
     }
 
     /// Null-Denotation
-    fn nud(
-        &mut self,
-        head: Self::Input,
-        tail: &mut Peekable<&mut Inputs>,
-        info: Affix,
-    ) -> Result<Self::Output, Self::Error> {
+    fn nud(&mut self, head: Self::Input, info: Affix) -> Result<Self::Output, Self::Error> {
         match info {
             Affix::Prefix(precedence) => {
-                let rhs = self.parse_input(tail, precedence.normalize().lower())?;
+                let rhs = self.parse_input(precedence.normalize().lower())?;
                 self.prefix(head, rhs)
             }
             Affix::Nilfix => self.primary(head),
@@ -153,7 +141,6 @@ where
     fn led(
         &mut self,
         head: Self::Input,
-        tail: &mut Peekable<&mut Inputs>,
         info: Affix,
         lhs: Self::Output,
     ) -> Result<Self::Output, Self::Error> {
@@ -165,7 +152,7 @@ where
                     Right => precedence.normalize().lower(),
                     Neither => precedence.normalize().raise(),
                 };
-                let rhs = self.parse_input(tail, precedence)?;
+                let rhs = self.parse_input(precedence)?;
                 self.infix(lhs, head, rhs)
             }
             Affix::Postfix(_) => self.postfix(lhs, head),
