@@ -106,11 +106,21 @@ pub trait PrattParser {
     }
 
     fn parse_input(&mut self, rbp: Precedence) -> Result<Self::Output, Self::Error> {
+        self.parse_until(rbp, |_| false)
+    }
+
+    fn parse_until<F>(&mut self, rbp: Precedence, pred: F) -> Result<Option<Self::Output>, Self::Error>
+        where
+            F: Fn(&Self::Input) -> bool,
+    {
         let info = self.query()?;
+        if self.peek().map(pred).unwrap_or_default() {
+            return Ok(None);
+        }
         let head = self.next().ok_or(PrattError::EmptyInput)?;
         let mut nbp = self.nbp(info);
         let mut node = self.nud(head, info);
-        while self.peek().is_some() {
+        while self.peek().map(|x| !pred(x)).unwrap_or_default() {
             let info = self.query()?;
             let lbp = self.lbp(info);
             if rbp < lbp && lbp < nbp {
