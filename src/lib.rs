@@ -11,8 +11,8 @@ pub enum Associativity {
 pub struct Precedence(pub u32);
 
 impl Precedence {
-    const MIN: Precedence = Precedence(u32::MIN);
-    const MAX: Precedence = Precedence(u32::MAX);
+    pub const MIN: Precedence = Precedence(u32::MIN);
+    pub const MAX: Precedence = Precedence(u32::MAX);
 
     const fn raise(mut self) -> Precedence {
         self.0 += 1;
@@ -107,20 +107,25 @@ pub trait PrattParser {
 
     fn parse_input(&mut self, rbp: Precedence) -> Result<Self::Output, Self::Error> {
         self.parse_until(rbp, |_| false)
+            .transpose()
+            .unwrap_or(Err(PrattError::EmptyInput.into()))
     }
 
-    fn parse_until<F>(&mut self, rbp: Precedence, pred: F) -> Result<Option<Self::Output>, Self::Error>
+    fn parse_until<F>(&mut self, rbp: Precedence, mut pred: F) -> Result<Option<Self::Output>, Self::Error>
         where
-            F: Fn(&Self::Input) -> bool,
+            F: FnMut(&Self::Input) -> bool,
     {
         let info = self.query()?;
-        if self.peek().map(pred).unwrap_or_default() {
+        if self.peek().is_some() && pred(self.peek().unwrap()) {
             return Ok(None);
         }
         let head = self.next().ok_or(PrattError::EmptyInput)?;
         let mut nbp = self.nbp(info);
         let mut node = self.nud(head, info);
-        while self.peek().map(|x| !pred(x)).unwrap_or_default() {
+        while self.peek().is_some() {
+            if pred(self.peek().unwrap()) {
+                break;
+            }
             let info = self.query()?;
             let lbp = self.lbp(info);
             if rbp < lbp && lbp < nbp {
@@ -131,7 +136,7 @@ pub trait PrattParser {
                 break;
             }
         }
-        node
+        node.map(|n| Some(n))
     }
 
     /// Null-Denotation
