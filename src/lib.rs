@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::BitOr;
 
 #[derive(Copy, Clone)]
 pub enum Associativity {
@@ -53,22 +54,6 @@ pub enum Affix {
 }
 
 impl Affix {
-    fn is_nilfix(&self) -> bool {
-        matches!(self, Self::Nilfix | Self::NilfixInfix(..) | Self::NilfixPostfix(_))
-    }
-
-    fn is_infix(&self) -> bool {
-        matches!(self, Self::Infix(..) | Self::NilfixInfix(..) | Self::PrefixInfix(..))
-    }
-
-    fn is_prefix(&self) -> bool {
-        matches!(self, Self::Prefix(_) | Self::PrefixInfix(..) | Self::PrefixPostfix(..))
-    }
-
-    fn is_postfix(&self) -> bool {
-        matches!(self, Self::Postfix(_) | Self::NilfixPostfix(_) | Self::PrefixPostfix(..))
-    }
-
     fn as_nud(&self) -> Self {
         match *self {
             Self::NilfixInfix(..) | Self::NilfixPostfix(_) => Self::Nilfix,
@@ -82,6 +67,20 @@ impl Affix {
             Self::NilfixInfix(p, a) | Self::PrefixInfix(_, (p, a)) => Self::Infix(p, a),
             Self::NilfixPostfix(p) | Self::PrefixPostfix(_, p) => Self::Postfix(p),
             other => other,
+        }
+    }
+}
+
+impl BitOr for Affix {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Self::Nilfix, Self::Infix(p, a)) => Self::NilfixInfix(p, a),
+            (Self::Nilfix, Self::Postfix(p)) => Self::NilfixPostfix(p),
+            (Self::Prefix(p1), Self::Infix(p2, a)) => Self::PrefixInfix(p1, (p1, a)),
+            (Self::Prefix(p1), Self::Postfix(p2)) => Self::PrefixPostfix(p1, p2),
+            _ => panic!("Invalid affix combination"),
         }
     }
 }
