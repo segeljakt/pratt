@@ -46,6 +46,44 @@ pub enum Affix {
     Infix(Precedence, Associativity),
     Prefix(Precedence),
     Postfix(Precedence),
+    NilfixInfix(Precedence, Associativity),
+    NilfixPostfix(Precedence),
+    PrefixPostfix(Precedence, Precedence),
+    PrefixInfix(Precedence, (Precedence, Associativity)),
+}
+
+impl Affix {
+    fn is_nilfix(&self) -> bool {
+        matches!(self, Self::Nilfix | Self::NilfixInfix(..) | Self::NilfixPostfix(_))
+    }
+
+    fn is_infix(&self) -> bool {
+        matches!(self, Self::Infix(..) | Self::NilfixInfix(..) | Self::PrefixInfix(..))
+    }
+
+    fn is_prefix(&self) -> bool {
+        matches!(self, Self::Prefix(_) | Self::PrefixInfix(..) | Self::PrefixPostfix(..))
+    }
+
+    fn is_postfix(&self) -> bool {
+        matches!(self, Self::Postfix(_) | Self::NilfixPostfix(_) | Self::PrefixPostfix(..))
+    }
+
+    fn as_nud(&self) -> Self {
+        match *self {
+            Self::NilfixInfix(..) | Self::NilfixPostfix(_) => Self::Nilfix,
+            Self::PrefixInfix(p, _) | Self::PrefixPostfix(p, _) => Self::Prefix(p),
+            other => other,
+        }
+    }
+
+    fn as_led(&self) -> Self {
+        match *self {
+            Self::NilfixInfix(p, a) | Self::PrefixInfix(_, (p, a)) => Self::Infix(p, a),
+            Self::NilfixPostfix(p) | Self::PrefixPostfix(_, p) => Self::Postfix(p),
+            other => other,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -136,12 +174,12 @@ pub trait PrattParser {
                 break;
             }
         }
-        node.map(|n| Some(n))
+        node.map(Some)
     }
 
     /// Null-Denotation
     fn nud(&mut self, head: Self::Input, info: Affix) -> Result<Self::Output, Self::Error> {
-        match info {
+        match info.as_nud() {
             Affix::Prefix(precedence) => {
                 let rhs = self.parse_input(precedence.normalize().lower())?;
                 self.prefix(head, rhs)
@@ -149,6 +187,7 @@ pub trait PrattParser {
             Affix::Nilfix => self.primary(head),
             Affix::Postfix(_) => Err(PrattError::UnexpectedPostfix(head).into()),
             Affix::Infix(_, _) => Err(PrattError::UnexpectedInfix(head).into()),
+            _ => unreachable!()
         }
     }
 
@@ -160,7 +199,7 @@ pub trait PrattParser {
         lhs: Self::Output,
     ) -> Result<Self::Output, Self::Error> {
         use Associativity::*;
-        match info {
+        match info.as_led() {
             Affix::Infix(precedence, associativity) => {
                 let precedence = match associativity {
                     Left => precedence.normalize(),
@@ -173,6 +212,7 @@ pub trait PrattParser {
             Affix::Postfix(_) => self.postfix(lhs, head),
             Affix::Nilfix => Err(PrattError::UnexpectedNilfix(head).into()),
             Affix::Prefix(_) => Err(PrattError::UnexpectedPrefix(head).into()),
+            _ => unreachable!(),
         }
     }
 
@@ -186,21 +226,23 @@ pub trait PrattParser {
 
     /// Left-Binding-Power
     fn lbp(&mut self, info: Affix) -> Precedence {
-        match info {
+        match info.as_led() {
             Affix::Nilfix => Precedence::MIN,
             Affix::Prefix(_) => Precedence::MIN,
             Affix::Postfix(precedence) => precedence.normalize(),
             Affix::Infix(precedence, _) => precedence.normalize(),
+            _ => unreachable!(),
         }
     }
 
     /// Next-Binding-Power
     fn nbp(&mut self, info: Affix) -> Precedence {
         use Associativity::*;
-        match info {
+        match info.as_nud() {
             Affix::Nilfix | Affix::Prefix(_) | Affix::Postfix(_) => Precedence::MAX,
             Affix::Infix(precedence, Left | Right) => precedence.normalize().raise(),
             Affix::Infix(precedence, Neither) => precedence.normalize(),
+            _ => unreachable!(),
         }
     }
 }
