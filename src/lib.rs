@@ -80,7 +80,7 @@ impl BitOr for Affix {
                 => Self::NilfixInfix(p, a),
             (Self::Nilfix, Self::Postfix(p)) | (Self::Postfix(p), Self::Nilfix) => Self::NilfixPostfix(p),
             (Self::Prefix(p1), Self::Infix(p2, a)) | (Self::Infix(p2, a), Self::Prefix(p1))
-                => Self::PrefixInfix(p1, (p1, a)),
+                => Self::PrefixInfix(p1, (p2, a)),
             (Self::Prefix(p1), Self::Postfix(p2)) | (Self::Postfix(p2), Self::Prefix(p1))
                 => Self::PrefixPostfix(p1, p2),
             _ => panic!("Invalid affix combination"),
@@ -240,7 +240,7 @@ pub trait PrattParser {
     /// Next-Binding-Power
     fn nbp(&mut self, info: Affix) -> Precedence {
         use Associativity::*;
-        match info.as_nud() {
+        match info.as_led() {
             Affix::Nilfix | Affix::Prefix(_) | Affix::Postfix(_) => Precedence::MAX,
             Affix::Infix(precedence, Left | Right) => precedence.normalize().raise(),
             Affix::Infix(precedence, Neither) => precedence.normalize(),
