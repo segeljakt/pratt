@@ -155,10 +155,10 @@ pub trait PrattParser {
         where
             F: FnMut(&Self::Input) -> bool,
     {
-        let info = self.query()?;
         if self.peek().is_some() && pred(self.peek().unwrap()) {
             return Ok(None);
         }
+        let info = self.query()?;
         let head = self.next().ok_or(PrattError::EmptyInput)?;
         let mut nbp = self.nbp(info);
         let mut node = self.nud(head, info);
