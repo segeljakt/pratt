@@ -76,10 +76,13 @@ impl BitOr for Affix {
 
     fn bitor(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (Self::Nilfix, Self::Infix(p, a)) => Self::NilfixInfix(p, a),
-            (Self::Nilfix, Self::Postfix(p)) => Self::NilfixPostfix(p),
-            (Self::Prefix(p1), Self::Infix(p2, a)) => Self::PrefixInfix(p1, (p1, a)),
-            (Self::Prefix(p1), Self::Postfix(p2)) => Self::PrefixPostfix(p1, p2),
+            (Self::Nilfix, Self::Infix(p, a)) | (Self::Infix(p, a), Self::Nilfix)
+                => Self::NilfixInfix(p, a),
+            (Self::Nilfix, Self::Postfix(p)) | (Self::Postfix(p), Self::Nilfix) => Self::NilfixPostfix(p),
+            (Self::Prefix(p1), Self::Infix(p2, a)) | (Self::Infix(p2, a), Self::Prefix(p1))
+                => Self::PrefixInfix(p1, (p1, a)),
+            (Self::Prefix(p1), Self::Postfix(p2)) | (Self::Postfix(p2), Self::Prefix(p1))
+                => Self::PrefixPostfix(p1, p2),
             _ => panic!("Invalid affix combination"),
         }
     }
