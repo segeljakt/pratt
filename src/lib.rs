@@ -146,22 +146,20 @@ pub trait PrattParser {
     }
 
     fn parse_input(&mut self, rbp: Precedence) -> Result<Self::Output, Self::Error> {
-        self.parse_until(rbp, |_| false)
-            .transpose()
-            .unwrap_or(Err(PrattError::EmptyInput.into()))
+        self.parse_until(rbp, &mut |_| false)
     }
 
-    fn parse_until<F>(&mut self, rbp: Precedence, mut pred: F) -> Result<Option<Self::Output>, Self::Error>
+    fn parse_until<F>(&mut self, rbp: Precedence, pred: &mut F) -> Result<Self::Output, Self::Error>
         where
             F: FnMut(&Self::Input) -> bool,
     {
         if self.peek().is_some() && pred(self.peek().unwrap()) {
-            return Ok(None);
+            return Err(PrattError::EmptyInput.into()); // TODO
         }
         let info = self.query()?;
-        let head = self.next().ok_or(PrattError::EmptyInput)?;
+        let head = self.next().unwrap();
         let mut nbp = self.nbp(info);
-        let mut node = self.nud(head, info);
+        let mut node = self.nud(head, info, pred);
         while self.peek().is_some() {
             if pred(self.peek().unwrap()) {
                 break;
@@ -171,19 +169,22 @@ pub trait PrattParser {
             if rbp < lbp && lbp < nbp {
                 let head = self.next().unwrap();
                 nbp = self.nbp(info);
-                node = self.led(head, info, node?);
+                node = self.led(head, info, node?, pred);
             } else {
                 break;
             }
         }
-        node.map(Some)
+        node
     }
 
     /// Null-Denotation
-    fn nud(&mut self, head: Self::Input, info: Affix) -> Result<Self::Output, Self::Error> {
+    fn nud<F>(&mut self, head: Self::Input, info: Affix, pred: &mut F) -> Result<Self::Output, Self::Error>
+    where
+        F: FnMut(&Self::Input) -> bool,
+    {
         match info.as_nud() {
             Affix::Prefix(precedence) => {
-                let rhs = self.parse_input(precedence.normalize().lower())?;
+                let rhs = self.parse_until(precedence.normalize().lower(), pred)?;
                 self.prefix(head, rhs)
             }
             Affix::Nilfix => self.primary(head),
@@ -194,12 +195,16 @@ pub trait PrattParser {
     }
 
     /// Left-Denotation
-    fn led(
+    fn led<F>(
         &mut self,
         head: Self::Input,
         info: Affix,
         lhs: Self::Output,
-    ) -> Result<Self::Output, Self::Error> {
+        pred: &mut F,
+    ) -> Result<Self::Output, Self::Error>
+    where
+        F: FnMut(&Self::Input) -> bool,
+    {
         use Associativity::*;
         match info.as_led() {
             Affix::Infix(precedence, associativity) => {
@@ -208,7 +213,7 @@ pub trait PrattParser {
                     Right => precedence.normalize().lower(),
                     Neither => precedence.normalize().raise(),
                 };
-                let rhs = self.parse_input(precedence)?;
+                let rhs = self.parse_until(precedence, pred)?;
                 self.infix(lhs, head, rhs)
             }
             Affix::Postfix(_) => self.postfix(lhs, head),
