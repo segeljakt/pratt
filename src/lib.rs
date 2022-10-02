@@ -9,7 +9,7 @@ pub enum Associativity {
     Neither,
 }
 
-#[derive(PartialEq, PartialOrd, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Copy, Clone)]
 pub struct Precedence(pub u32);
 
 impl Precedence {
@@ -116,14 +116,21 @@ where
 
     fn parse(
         &mut self,
-        inputs: &mut Inputs,
+        inputs: Inputs,
     ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
-        self.parse_input(&mut inputs.peekable(), Precedence(0))
+        self.parse_input(&mut inputs.peekable(), Precedence::min())
+    }
+
+    fn parse_peekable(
+        &mut self,
+        inputs: &mut Peekable<Inputs>,
+    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+        self.parse_input(inputs, Precedence::min())
     }
 
     fn parse_input(
         &mut self,
-        tail: &mut Peekable<&mut Inputs>,
+        tail: &mut Peekable<Inputs>,
         rbp: Precedence,
     ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         if let Some(head) = tail.next() {
@@ -151,7 +158,7 @@ where
     fn nud(
         &mut self,
         head: Self::Input,
-        tail: &mut Peekable<&mut Inputs>,
+        tail: &mut Peekable<Inputs>,
         info: Affix,
     ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         match info {
@@ -169,7 +176,7 @@ where
     fn led(
         &mut self,
         head: Self::Input,
-        tail: &mut Peekable<&mut Inputs>,
+        tail: &mut Peekable<Inputs>,
         info: Affix,
         lhs: Self::Output,
     ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {

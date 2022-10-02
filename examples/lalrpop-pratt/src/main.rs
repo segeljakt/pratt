@@ -1,29 +1,33 @@
-<h1 align="center">pratt - A General Purpose Pratt Parser for Rust</h1>
+use lalrpop_util::lalrpop_mod;
+use pratt::{Affix, Associativity, PrattParser, Precedence, Result};
 
-[<img alt="github" src="https://img.shields.io/badge/github-segeljakt/pratt-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/segeljakt/pratt)
-[<img alt="crates.io" src="https://img.shields.io/crates/v/pratt.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/pratt)
-[<img alt="crates.io" src="https://img.shields.io/crates/dv/pratt?style=for-the-badge&labelColor=555555&logoColor=white&logo=rust" height="20">](https://crates.io/crates/pratt)
+lalrpop_mod!(pub grammar);
 
-<p align="center">
-  <img src="https://github.com/segeljakt/assets/blob/master/Trees.jpg?raw=true">
-</p>
+#[derive(Debug, Eq, PartialEq)]
+pub enum Expr {
+    BinOp(Box<Expr>, BinOpKind, Box<Expr>),
+    UnOp(UnOpKind, Box<Expr>),
+    Int(i32),
+}
 
-This crate leverages a high-level interface for implementing Pratt parsers in Rust.
+#[derive(Debug, Eq, PartialEq)]
+pub enum BinOpKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
+    Eq,
+}
 
-> In computer science, a Pratt parser is an improved recursive descent parser that associates semantics with tokens instead of grammar rules.
-- https://en.wikipedia.org/wiki/Pratt_parser
+#[derive(Debug, Eq, PartialEq)]
+pub enum UnOpKind {
+    Not,
+    Neg,
+    Try,
+}
 
-In other words, you can use a Pratt parser to parse trees of expressions that might contain *unary* and *binary* operators of varying *precedence* and *associativity*.
-
-## Example
-
-Assume we want to parse an expression `!1?*-3+3/!2^4?-1` into `(((((!(1))?)*(-(3)))+((3)/((!((2)^(4)))?)))-(1))`.
-
-Our strategy is to implement a parser which parses source code into token trees, and then token-trees into an expression tree. The full implementation can be viewed [here](https://github.com/segeljakt/pratt/tree/master/examples/lalrpop-pratt). This example uses [LALRPOP](https://github.com/lalrpop/lalrpop). A full implementation that instead uses the [pest](https://github.com/pest-parser/pest) parser is available [here](https://github.com/segeljakt/pratt/tree/master/examples/lalrpop-pratt).
-
-```rust
-// From this
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum TokenTree {
     Prefix(char),
     Postfix(char),
@@ -31,90 +35,6 @@ pub enum TokenTree {
     Primary(i32),
     Group(Vec<TokenTree>),
 }
-
-// To this
-#[derive(Debug)]
-pub enum Expr {
-    BinOp(Box<Expr>, BinOpKind, Box<Expr>),
-    UnOp(UnOpKind, Box<Expr>),
-    Int(i32),
-}
-
-#[derive(Debug)]
-pub enum BinOpKind {
-    Add, // +
-    Sub, // -
-    Mul, // *
-    Div, // /
-    Pow, // ^
-    Eq,  // =
-}
-
-#[derive(Debug)]
-pub enum UnOp {
-    Not, // !
-    Neg, // -
-    Try, // ?
-}
-```
-
-We implement the parser from source code into token-trees with [LALRPOP](https://github.com/lalrpop/lalrpop).
-
-<details><summary>LALRPOP Grammar</summary>
-<p>
-
-```rust
-use crate::TokenTree;
-
-grammar;
-
-pub TokenTree = Group;
-
-Group: Vec<TokenTree> = <prefix:Prefix*> <primary:Primary> <mut postfix:Postfix*>
-                   <rest:(Infix Prefix* Primary Postfix*)*> => {
-    let mut group = prefix;
-    group.push(primary);
-    group.append(&mut postfix);
-    for (infix, mut prefix, primary, mut postfix) in rest {
-        group.push(infix);
-        group.append(&mut prefix);
-        group.push(primary);
-        group.append(&mut postfix);
-    }
-    group
-};
-
-Primary: TokenTree = {
-    "(" <Group> ")" => TokenTree::Group(<>),
-    r"[0-9]+"       => TokenTree::Primary(<>.parse::<i32>().unwrap()),
-}
-
-Infix: TokenTree = {
-    "+" => TokenTree::Infix('+'),
-    "-" => TokenTree::Infix('-'),
-    "*" => TokenTree::Infix('*'),
-    "/" => TokenTree::Infix('/'),
-    "=" => TokenTree::Infix('='),
-    "^" => TokenTree::Infix('^'),
-}
-
-Prefix: TokenTree = {
-    "-" => TokenTree::Prefix('-'),
-    "!" => TokenTree::Prefix('!'),
-}
-
-Postfix: TokenTree = {
-    "?" => TokenTree::Postfix('?'),
-}
-```
-
-</p>
-</details>
-
-Then, for the Pratt parser, we define a `struct ExprParser` and implement `pratt::ExprParser` for it.
-
-```rust
-use pratt::{Affix, Associativity, PrattParser, Precedence, Result};
 
 struct ExprParser;
 
@@ -188,13 +108,7 @@ where
         Ok(Expr::UnOp(op, Box::new(lhs)))
     }
 }
-```
 
-Note that methods take `&mut self`, which allows the parser to store state while parsing, e.g. to accumulate errors and keep precedence/associativity information.
-
-To run the parser:
-
-```rust
 fn main() {
     let mut args = std::env::args();
     let _ = args.next();
@@ -205,14 +119,10 @@ fn main() {
     let tt = grammar::TokenTreeParser::new().parse(&input).unwrap();
     println!("TokenTree: {:?}", tt);
 
-    let expr = ExprParser.parse(&mut tt.into_iter()).unwrap();
+    let expr = ExprParser.parse(tt.into_iter()).unwrap();
     println!("Expression: {:?}", expr);
 }
-```
 
-Plus some tests:
-
-```rust
 #[cfg(test)]
 mod test {
     fn parse(input: &str) -> Expr {
@@ -220,7 +130,7 @@ mod test {
             .parse(input)
             .unwrap()
             .into_iter();
-        ExprParser.parse(&mut tt.into_iter()).unwrap()
+        ExprParser.parse(tt.into_iter()).unwrap()
     }
     use super::BinOpKind::*;
     use super::Expr::*;
@@ -289,4 +199,3 @@ mod test {
         );
     }
 }
-```

@@ -1,0 +1,8 @@
+WHITESPACE =  _{ " " | "\t" | NEWLINE }
+
+group   =  { prefix* ~ primary ~ postfix* ~ (infix ~ prefix* ~ primary ~ postfix* )* }
+infix   =  { "+" | "-" | "*" | "/" | "=" | "^" }
+prefix  =  { "-" | "!" }
+postfix =  { "?" }
+primary = _{ num | "(" ~ group ~ ")" }
+  num   = @{ (ASCII_NONZERO_DIGIT ~ ASCII_DIGIT+ | ASCII_DIGIT) }
