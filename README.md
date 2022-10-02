@@ -19,7 +19,7 @@ In other words, you can use a Pratt parser to parse trees of expressions that mi
 
 Assume we want to parse an expression `!1?*-3+3/!2^4?-1` into `(((((!(1))?)*(-(3)))+((3)/((!((2)^(4)))?)))-(1))`.
 
-Our strategy is to implement a parser which parses source code into token trees, and then token-trees into an expression tree. The full implementation can be viewed [here](https://github.com/segeljakt/pratt/tree/master/examples/lalrpop-pratt). This example uses [LALRPOP](https://github.com/lalrpop/lalrpop). A full implementation that instead uses the [pest](https://github.com/pest-parser/pest) parser is available [here](https://github.com/segeljakt/pratt/tree/master/examples/lalrpop-pratt).
+Our strategy is to implement a parser which parses source code into token trees, and then token-trees into an expression tree. The full implementation can be viewed [here](https://github.com/segeljakt/pratt/tree/master/examples/lalrpop-pratt). This example uses [LALRPOP](https://github.com/lalrpop/lalrpop). A full implementation that instead uses the [pest](https://github.com/pest-parser/pest) parser is available [here](https://github.com/segeljakt/pratt/tree/master/examples/pest-pratt).
 
 ```rust
 // From this
