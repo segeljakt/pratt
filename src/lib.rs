@@ -14,22 +14,22 @@ pub struct Precedence(pub u32);
 
 impl Precedence {
     const fn raise(mut self) -> Precedence {
-        self.0 += 1;
+        self.0 = self.0.saturating_add(1);
         self
     }
     const fn lower(mut self) -> Precedence {
-        self.0 -= 1;
+        self.0 = self.0.saturating_sub(1);
         self
     }
     const fn normalize(mut self) -> Precedence {
-        self.0 *= 10;
+        self.0 = self.0.saturating_mul(10);
         self
     }
     const fn min() -> Precedence {
-        Precedence(std::u32::MIN)
+        Precedence(u32::MIN)
     }
     const fn max() -> Precedence {
-        Precedence(std::u32::MAX)
+        Precedence(u32::MAX)
     }
 }
 
