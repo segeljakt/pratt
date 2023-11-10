@@ -1,6 +1,4 @@
-use std::fmt;
-use std::iter::Peekable;
-use std::result;
+#![no_std]
 
 #[derive(Copy, Clone)]
 pub enum Associativity {
@@ -14,22 +12,22 @@ pub struct Precedence(pub u32);
 
 impl Precedence {
     const fn raise(mut self) -> Precedence {
-        self.0 += 1;
+        self.0 = self.0.saturating_add(1);
         self
     }
     const fn lower(mut self) -> Precedence {
-        self.0 -= 1;
+        self.0 = self.0.saturating_sub(1);
         self
     }
     const fn normalize(mut self) -> Precedence {
-        self.0 *= 10;
+        self.0 = self.0.saturating_mul(10);
         self
     }
     const fn min() -> Precedence {
-        Precedence(std::u32::MIN)
+        Precedence(u32::MIN)
     }
     const fn max() -> Precedence {
-        Precedence(std::u32::MAX)
+        Precedence(u32::MAX)
     }
 }
 
@@ -42,7 +40,7 @@ pub enum Affix {
 }
 
 #[derive(Debug)]
-pub enum PrattError<I: fmt::Debug, E: fmt::Display> {
+pub enum PrattError<I: core::fmt::Debug, E: core::fmt::Display> {
     UserError(E),
     EmptyInput,
     UnexpectedNilfix(I),
@@ -51,8 +49,8 @@ pub enum PrattError<I: fmt::Debug, E: fmt::Display> {
     UnexpectedPostfix(I),
 }
 
-impl<I: fmt::Debug, E: fmt::Display> fmt::Display for PrattError<I, E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl<I: core::fmt::Debug, E: core::fmt::Display> core::fmt::Display for PrattError<I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             PrattError::UserError(e) => write!(f, "{}", e),
             PrattError::EmptyInput => write!(f, "Pratt parser was called with empty input."),
@@ -75,64 +73,64 @@ impl<I: fmt::Debug, E: fmt::Display> fmt::Display for PrattError<I, E> {
 #[derive(Debug)]
 pub struct NoError;
 
-impl fmt::Display for NoError {
-    fn fmt(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for NoError {
+    fn fmt(&self, _: &mut core::fmt::Formatter) -> core::fmt::Result {
         Ok(())
     }
 }
 
-pub type Result<T> = result::Result<T, NoError>;
+pub type Result<T> = core::result::Result<T, NoError>;
 
 pub trait PrattParser<Inputs>
 where
     Inputs: Iterator<Item = Self::Input>,
 {
-    type Error: fmt::Display;
-    type Input: fmt::Debug;
+    type Error: core::fmt::Display;
+    type Input: core::fmt::Debug;
     type Output: Sized;
 
-    fn query(&mut self, input: &Self::Input) -> result::Result<Affix, Self::Error>;
+    fn query(&mut self, input: &Self::Input) -> core::result::Result<Affix, Self::Error>;
 
-    fn primary(&mut self, input: Self::Input) -> result::Result<Self::Output, Self::Error>;
+    fn primary(&mut self, input: Self::Input) -> core::result::Result<Self::Output, Self::Error>;
 
     fn infix(
         &mut self,
         lhs: Self::Output,
         op: Self::Input,
         rhs: Self::Output,
-    ) -> result::Result<Self::Output, Self::Error>;
+    ) -> core::result::Result<Self::Output, Self::Error>;
 
     fn prefix(
         &mut self,
         op: Self::Input,
         rhs: Self::Output,
-    ) -> result::Result<Self::Output, Self::Error>;
+    ) -> core::result::Result<Self::Output, Self::Error>;
 
     fn postfix(
         &mut self,
         lhs: Self::Output,
         op: Self::Input,
-    ) -> result::Result<Self::Output, Self::Error>;
+    ) -> core::result::Result<Self::Output, Self::Error>;
 
     fn parse(
         &mut self,
         inputs: Inputs,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+    ) -> core::result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         self.parse_input(&mut inputs.peekable(), Precedence::min())
     }
 
     fn parse_peekable(
         &mut self,
-        inputs: &mut Peekable<Inputs>,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+        inputs: &mut core::iter::Peekable<Inputs>,
+    ) -> core::result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         self.parse_input(inputs, Precedence::min())
     }
 
     fn parse_input(
         &mut self,
-        tail: &mut Peekable<Inputs>,
+        tail: &mut core::iter::Peekable<Inputs>,
         rbp: Precedence,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+    ) -> core::result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         if let Some(head) = tail.next() {
             let info = self.query(&head).map_err(PrattError::UserError)?;
             let mut nbp = self.nbp(info);
@@ -158,9 +156,9 @@ where
     fn nud(
         &mut self,
         head: Self::Input,
-        tail: &mut Peekable<Inputs>,
+        tail: &mut core::iter::Peekable<Inputs>,
         info: Affix,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+    ) -> core::result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         match info {
             Affix::Prefix(precedence) => {
                 let rhs = self.parse_input(tail, precedence.normalize().lower());
@@ -176,10 +174,10 @@ where
     fn led(
         &mut self,
         head: Self::Input,
-        tail: &mut Peekable<Inputs>,
+        tail: &mut core::iter::Peekable<Inputs>,
         info: Affix,
         lhs: Self::Output,
-    ) -> result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
+    ) -> core::result::Result<Self::Output, PrattError<Self::Input, Self::Error>> {
         match info {
             Affix::Infix(precedence, associativity) => {
                 let precedence = precedence.normalize();
